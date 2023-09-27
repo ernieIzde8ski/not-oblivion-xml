@@ -1,5 +1,7 @@
 # Not Oblivion XML
 
+![Build Status](https://github.com/ernieIzde8ski/not-oblivion-xml/actions/workflows/rust.yml/badge.svg)
+
 The Elder Scrolls IV: Oblivion has an absolutely insane format for menu panels. It is [conveniently documented by the CS wiki](https://cs.elderscrolls.com/index.php?title=Oblivion_XML_Reference), but remains obtuse and difficult for humans to parse. The aim of this project is to supply a format which is both easy to read and easy to transpile to Oblivion-compatible XML.
 
 In other words, write this:
