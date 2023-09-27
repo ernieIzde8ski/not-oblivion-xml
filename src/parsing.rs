@@ -4,7 +4,7 @@ use std::{fmt::Display, vec::Vec};
 /// A single unit from a line.
 #[derive(Debug)]
 enum RawToken {
-    /// An equality sign.
+    /// An equals sign.
     Equals,
     /// A period.
     Period,
@@ -18,7 +18,7 @@ enum RawToken {
 #[derive(Debug, PartialEq)]
 pub(crate) enum Token {
     /// represents a `key="value"` phrase
-    Equality { key: String, val: String },
+    Attribute { key: String, val: String },
     /// represents a `src.trait` phrase
     Trait { src: String, r#trait: String },
     /// represents a basic number
@@ -33,7 +33,7 @@ pub(crate) enum Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            Token::Equality { key, val } => write!(f, "{}=\"{}\"", key, val),
+            Token::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
             Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
             Token::Int(i) => write!(f, "{}", i),
             Token::Colon => write!(f, ":"),
@@ -87,15 +87,15 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                 // since attributes and traits are dependent on "what comes next",
                 // they get special operations
                 RT::Equals => {
-                    checked_increment_assign!("expected token after equality operator");
+                    checked_increment_assign!("expected token after attribute operator");
                     match (current_token, next_token) {
-                        (RT::String(a), RT::String(b)) => resp.push(T::Equality {
+                        (RT::String(a), RT::String(b)) => resp.push(T::Attribute {
                             key: a.to_string(),
                             val: b.to_string(),
                         }),
                         _ => {
                             return Err(
-                                "Both values to an equality operator must be strings!".to_string()
+                                "Both values of an attribute must be strings!".to_string()
                             )
                         }
                     };
@@ -110,7 +110,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                         }),
                         _ => {
                             return Err(
-                                "Both values to an equality operator must be strings!".to_string()
+                                "Both values to an attribute operator must be strings!".to_string()
                             )
                         }
                     };

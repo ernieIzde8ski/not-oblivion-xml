@@ -9,10 +9,10 @@ mod parsing {
     }
 
     #[test]
-    fn equality_line() {
-        let line = "rect name=\"container\": // this line should have an Equality operator";
+    fn attributes() {
+        let line = "rect name=\"container\": // this line should have an Attribute operator";
         let line = extract_tokens(line).expect("should have tokens");
-        let expected = Token::Equality {
+        let expected = Token::Attribute {
             key: "name".to_owned(),
             val: "container".to_owned(),
         };
