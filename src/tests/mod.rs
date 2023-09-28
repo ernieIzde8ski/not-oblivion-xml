@@ -4,7 +4,7 @@ mod parsing {
 
     #[test]
     fn empty_line() {
-        let line = "// This line should be empty.";
+        let line = "# This line should be empty.";
         extract_tokens(line).expect_not("should be empty")
     }
 
@@ -21,7 +21,7 @@ mod parsing {
 
     #[test]
     fn traits() {
-        let line = "me().width - 0\\.0 // This should contain a trait and escaped syntax.";
+        let line = "me().width - 0\\.0 # This should contain a trait and escaped syntax.";
         let line = extract_tokens(line).expect("should have tokens");
 
         let expected = Line {
@@ -31,13 +31,14 @@ mod parsing {
                     src: "me()".to_string(),
                     r#trait: "width".to_string(),
                 },
-                Token::Raw("-".to_string()),
+                Token::Arithmetic(ArithmeticToken::Sub),
                 Token::Raw("0.0".to_string()),
             ],
         };
 
         assert_eq!(line, expected);
     }
+
     #[test]
     fn syntax_error() {
         let line = "me(). // This line should have a syntax error.";

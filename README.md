@@ -12,15 +12,15 @@ rect name="container":
     x: 0
     y: 0
     width: 500
-    // Enforce a 16:9 aspect ratio
+    # Enforce a 16:9 aspect ratio
     height: me().width / 16 * 9
 
     image name="icon":
         filename: some_picture\.dds
-        // Set the image to use its "natural" size:
+        # Set the image to use its "natural" size:
         width: me().filewidth
         height: me().fileheight
-        // Position this image on the bottom-right corner of its container.
+        # Position this image on the bottom-right corner of its container.
         x: parent().width - me().width
         y: parent().height - me().height
 ```

@@ -1,6 +1,43 @@
 use crate::errors::Maybe;
 use std::{fmt::Display, vec::Vec};
 
+/// Basic math operators
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) enum ArithmeticToken {
+    /// A left square bracket.
+    CloseBracket,
+    /// A right square bracket.
+    OpenBracket,
+    /// A forward slash.
+    Div,
+    /// An asterisk.
+    Mult,
+    /// A minus symbol.
+    Sub,
+    /// A plus symbol.
+    Add,
+    /// A percentage sign.
+    Mod,
+}
+
+impl Display for ArithmeticToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ArithmeticToken::CloseBracket => "[",
+                ArithmeticToken::OpenBracket => "]",
+                ArithmeticToken::Div => "/",
+                ArithmeticToken::Mult => "*",
+                ArithmeticToken::Sub => "-",
+                ArithmeticToken::Add => "+",
+                ArithmeticToken::Mod => "%",
+            }
+        )
+    }
+}
+
 /// A single unit from a line.
 #[derive(Debug)]
 enum RawToken {
@@ -10,11 +47,20 @@ enum RawToken {
     Period,
     /// An uppercase semicolon.
     Colon,
+
+    /// Basic binary (mostly) operators.
+    Arithmetic(ArithmeticToken),
+
     /// A string that couldn't be parsed as any other symbol.
     String(String),
 }
 
 /// A space/quote-separated member.
+///
+/// Only very basic parsing should be done at the RawToken -> Token stage
+/// for example:
+/// - yes: parsing complex tokens which contain primitives, like Attribute
+/// - no:  nesting tokens inside of parentheses
 #[derive(Debug, PartialEq)]
 pub(crate) enum Token {
     /// represents a `key="value"` phrase
@@ -25,6 +71,8 @@ pub(crate) enum Token {
     Int(u16),
     /// represents an uppercase semicolon
     Colon,
+    /// represents one of the binary arithmetic operators
+    Arithmetic(ArithmeticToken),
     /// Data that couldn't be parsed as any other type
     Raw(String),
 }
@@ -37,6 +85,7 @@ impl Display for Token {
             Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
             Token::Int(i) => write!(f, "{}", i),
             Token::Colon => write!(f, ":"),
+            Token::Arithmetic(op) => write!(f, "{}", op),
             Token::Raw(s) => write!(f, "{}", s),
         }
     }
@@ -93,11 +142,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                             key: a.to_string(),
                             val: b.to_string(),
                         }),
-                        _ => {
-                            return Err(
-                                "Both values of an attribute must be strings!".to_string()
-                            )
-                        }
+                        _ => return Err("Both values of an attribute must be strings!".to_string()),
                     };
                     checked_increment_assign!();
                 }
@@ -117,7 +162,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                     checked_increment_assign!();
                 }
                 // for colons and strings in the next pattern, they are irrelevant
-                RT::Colon | RT::String(_) => {
+                RT::Colon | RT::String(_) | RT::Arithmetic(_) => {
                     let token = match current_token {
                         RT::String(s) => {
                             if let Ok(n) = s.trim().parse::<u16>() {
@@ -126,8 +171,9 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                                 T::Raw(s.clone())
                             }
                         }
+                        RT::Arithmetic(op) => T::Arithmetic(op.clone()),
                         RT::Colon => T::Colon,
-                        _ => panic!(),
+                        RT::Period | RT::Equals => panic!(),
                     };
                     resp.push(token);
                 }
@@ -148,8 +194,12 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
             }
             RT::Colon => T::Colon,
             RT::Equals | RT::Period => {
-                return Err("last token must be a primitive! (String, Int, or Colon)".to_string())
+                return Err(
+                    "last token must be a primitive! (String, Int, Arithmetic, or Colon)"
+                        .to_string(),
+                )
             }
+            RT::Arithmetic(_) => todo!(),
         };
         resp.push(token);
     }
@@ -181,15 +231,30 @@ impl Display for Line {
     }
 }
 
-const _FORWARD_SLASH: char = '/';
-const _BACKSLASH: char = '\\';
-const _SPACE: char = ' ';
-const _COLON: char = ':';
-const _TRAIT_SEP: char = '.';
-const _EQUALS_SIGN: char = '=';
-const _QUOTE: char = '"';
+macro_rules! __define_char_constants {
+    ($($name:ident, $val:expr),*) => {
+        $(const $name: char = $val;)*
+    };
+}
+
+__define_char_constants! {
+_POUND, '#',
+_BACKSLASH, '\\',
+_SPACE, ' ',
+_COLON, ':',
+_TRAIT_SEP,'.',
+_EQUALS_SIGN, '=',
+_CLOSE_BRACKET, '[',
+_OPEN_BRACKET, ']',
+_DIV, '/',
+_MULT, '*',
+_SUB, '-',
+_ADD, '+',
+_QUOTE, '"'
+}
 
 pub fn extract_tokens(line: &str) -> Maybe<Line> {
+    use ArithmeticToken as AT;
     use Maybe::{Err, Not, Ok};
 
     // strip ending whitespace
@@ -247,24 +312,9 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                     ch = next_ch_or!(return Err("expected a character; got EOL".to_string()));
                     write_buf!("{}", ch);
                 }
-                // Treat as comment if two are found
-                _FORWARD_SLASH => {
-                    // end abruptly on EOL
-                    ch = next_ch_or!({
-                        write_buf!("/");
-                        break;
-                    });
-                    match ch == _FORWARD_SLASH {
-                        // end abruptly on comment
-                        true => break,
-                        // write slash to buffer and retry matching the next character
-                        false => {
-                            write_buf!("/");
-                            continue;
-                        }
-                    };
-                }
-                // Spaces are delimiters
+                // Treat as comment
+                _POUND => break,
+                // Act as delimiter
                 _SPACE => flush_buf!(),
                 // Mark the end of a tag, and allow in-lining afterwards
                 _COLON => flush_buf!(RawToken::Colon),
@@ -272,6 +322,12 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _TRAIT_SEP => flush_buf!(RawToken::Period),
                 // `key="value"` expressions
                 _EQUALS_SIGN => flush_buf!(RawToken::Equals),
+                _CLOSE_BRACKET => flush_buf!(RawToken::Arithmetic(AT::CloseBracket)),
+                _OPEN_BRACKET => flush_buf!(RawToken::Arithmetic(AT::OpenBracket)),
+                _DIV => flush_buf!(RawToken::Arithmetic(AT::Div)),
+                _MULT => flush_buf!(RawToken::Arithmetic(AT::Mult)),
+                _SUB => flush_buf!(RawToken::Arithmetic(AT::Sub)),
+                _ADD => flush_buf!(RawToken::Arithmetic(AT::Add)),
                 // Pause delimiting inside quote blocks
                 _QUOTE => loop {
                     ch = next_ch_or!(return Err("expected closing quote; got EOL".to_string()));
