@@ -141,7 +141,8 @@ _MULT, '*',
 _SUB, '-',
 _ADD, '+',
 _MOD, '%',
-_QUOTE, '"'
+_SINGLE_QUOTE, '\'',
+_DOUBLE_QUOTE, '"'
 }
 
 pub fn extract_tokens(line: &str) -> Maybe<Line> {
@@ -221,19 +222,22 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _ADD => flush_buf!(RawToken::Arithmetic(AT::Add)),
                 _MOD => flush_buf!(RawToken::Arithmetic(AT::Mod)),
                 // Pause delimiting inside quote blocks
-                _QUOTE => loop {
-                    ch = next_ch_or!(return Err("expected closing quote; got EOL".to_string()));
-                    ch = match ch {
-                        _QUOTE => break,
-                        _BACKSLASH => next_ch_or!(
-                            return Err(
-                                "expected closing quote before EOL; got backslash".to_string()
-                            )
-                        ),
-                        ch => ch,
-                    };
-                    write_buf!("{}", ch);
-                },
+                _SINGLE_QUOTE | _DOUBLE_QUOTE => {
+                    let quote = ch;
+                    loop {
+                        ch = next_ch_or!(return Err("expected closing quote; got EOL".to_string()));
+                        if ch == quote {
+                            break;
+                        } else if ch == _BACKSLASH {
+                            ch = next_ch_or!(
+                                return Err(
+                                    "expected closing quote before EOL; got backslash".to_string()
+                                )
+                            );
+                        };
+                        write_buf!("{}", ch);
+                    }
+                }
                 // Add unrecognized chars to buffer
                 other => write_buf!("{}", other),
             };

@@ -1,4 +1,4 @@
-rect name="container":
+rect name='container':
     locus: &true;
     x: 0
     y: 0
