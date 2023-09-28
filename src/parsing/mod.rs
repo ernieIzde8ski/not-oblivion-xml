@@ -153,6 +153,10 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
     let mut line = line.trim_end().chars();
     /// gets the next value of `ch` OR
     macro_rules! next_ch_or {
+        // return Err with the message when given a string literal
+        ($m:literal) => {
+            next_ch_or!(return Err($m.to_string()))
+        };
         ($s:expr) => {
             match line.next() {
                 Some(ch) => ch,
@@ -201,7 +205,7 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
             match ch {
                 // Escape next character
                 _BACKSLASH => {
-                    ch = next_ch_or!(return Err("expected a character; got EOL".to_string()));
+                    ch = next_ch_or!("expected a character; got EOL");
                     write_buf!("{}", ch);
                 }
                 // Treat as comment
@@ -225,15 +229,11 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _SINGLE_QUOTE | _DOUBLE_QUOTE => {
                     let quote = ch;
                     loop {
-                        ch = next_ch_or!(return Err("expected closing quote; got EOL".to_string()));
+                        ch = next_ch_or!("expected closing quote; got EOL");
                         if ch == quote {
                             break;
                         } else if ch == _BACKSLASH {
-                            ch = next_ch_or!(
-                                return Err(
-                                    "expected closing quote before EOL; got backslash".to_string()
-                                )
-                            );
+                            ch = next_ch_or!("expected closing quote before EOL; got backslash");
                         };
                         write_buf!("{}", ch);
                     }
