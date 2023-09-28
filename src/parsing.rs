@@ -250,6 +250,7 @@ _DIV, '/',
 _MULT, '*',
 _SUB, '-',
 _ADD, '+',
+_MOD, '%',
 _QUOTE, '"'
 }
 
@@ -328,6 +329,7 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _MULT => flush_buf!(RawToken::Arithmetic(AT::Mult)),
                 _SUB => flush_buf!(RawToken::Arithmetic(AT::Sub)),
                 _ADD => flush_buf!(RawToken::Arithmetic(AT::Add)),
+                _MOD => flush_buf!(RawToken::Arithmetic(AT::Mod)),
                 // Pause delimiting inside quote blocks
                 _QUOTE => loop {
                     ch = next_ch_or!(return Err("expected closing quote; got EOL".to_string()));
