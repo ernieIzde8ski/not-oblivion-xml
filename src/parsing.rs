@@ -234,6 +234,8 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                     raw_tokens.push(RawToken::String(buf));
                     $(raw_tokens.push($extra);)*
                     #[allow(unused_assignments)] { buf = String::new() };
+                } else {
+                    $(raw_tokens.push($extra);)*
                 }
             };
         }
