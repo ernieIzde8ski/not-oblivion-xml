@@ -1,95 +1,9 @@
+mod structs;
+
 use crate::errors::Maybe;
-use std::{fmt::Display, vec::Vec};
+use std::vec::Vec;
 
-/// Basic math operators
-#[derive(Debug, PartialEq, Clone)]
-pub(crate) enum ArithmeticToken {
-    /// A left square bracket.
-    CloseBracket,
-    /// A right square bracket.
-    OpenBracket,
-    /// A forward slash.
-    Div,
-    /// An asterisk.
-    Mult,
-    /// A minus symbol.
-    Sub,
-    /// A plus symbol.
-    Add,
-    /// A percentage sign.
-    Mod,
-}
-
-impl Display for ArithmeticToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ArithmeticToken::CloseBracket => "[",
-                ArithmeticToken::OpenBracket => "]",
-                ArithmeticToken::Div => "/",
-                ArithmeticToken::Mult => "*",
-                ArithmeticToken::Sub => "-",
-                ArithmeticToken::Add => "+",
-                ArithmeticToken::Mod => "%",
-            }
-        )
-    }
-}
-
-/// A single unit from a line.
-#[derive(Debug)]
-enum RawToken {
-    /// An equals sign.
-    Equals,
-    /// A period.
-    Period,
-    /// An uppercase semicolon.
-    Colon,
-
-    /// Basic binary (mostly) operators.
-    Arithmetic(ArithmeticToken),
-
-    /// A string that couldn't be parsed as any other symbol.
-    String(String),
-}
-
-/// A space/quote-separated member.
-///
-/// Only very basic parsing should be done at the RawToken -> Token stage
-/// for example:
-/// - yes: parsing complex tokens which contain primitives, like Attribute
-/// - no:  nesting tokens inside of parentheses
-#[derive(Debug, PartialEq)]
-pub(crate) enum Token {
-    /// represents a `key="value"` phrase
-    Attribute { key: String, val: String },
-    /// represents a `src.trait` phrase
-    Trait { src: String, r#trait: String },
-    /// represents a basic number
-    Int(u16),
-    /// represents an uppercase semicolon
-    Colon,
-    /// represents one of the binary arithmetic operators
-    Arithmetic(ArithmeticToken),
-    /// Data that couldn't be parsed as any other type
-    Raw(String),
-}
-
-/// Displays a token in the same format as it is read
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
-            Token::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
-            Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
-            Token::Int(i) => write!(f, "{}", i),
-            Token::Colon => write!(f, ":"),
-            Token::Arithmetic(op) => write!(f, "{}", op),
-            Token::Raw(s) => write!(f, "{}", s),
-        }
-    }
-}
+pub(crate) use structs::{ArithmeticToken, Line, RawToken, Token};
 
 /// Converts a vector of RawToken to a vector of Token.
 fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
@@ -205,30 +119,6 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
     }
 
     Maybe::Ok(resp)
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Line {
-    /// Total whitespace characters leading into a string
-    pub(crate) leading_whitespace: u8,
-    /// Recognized tokens in a string
-    pub(crate) tokens: Vec<Token>,
-}
-
-impl Display for Line {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for _ in 0..(self.leading_whitespace) {
-            write!(f, " ")?
-        }
-        let len = self.tokens.len();
-        if len == 0 {
-            return Ok(());
-        };
-        for i in 0..(len - 1) {
-            write!(f, "{} ", self.tokens[i])?
-        }
-        write!(f, "{}", self.tokens[len - 1])
-    }
 }
 
 macro_rules! __define_char_constants {
