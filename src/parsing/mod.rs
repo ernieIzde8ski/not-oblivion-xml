@@ -3,13 +3,18 @@ mod structs;
 use crate::errors::Maybe;
 use std::vec::Vec;
 
-pub(crate) use structs::{ArithmeticToken, Line, RawToken, Token};
+#[cfg(debug_assertions)]
+use crate::debug;
+pub(crate) use structs::{ArithmeticToken, Line, RawToken, RelationalOperator, Token};
 
 /// Converts a vector of RawToken to a vector of Token.
 fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
     use Maybe::{Err, Not};
+    // No star-import over RawToken to avoid clashes with Token::*
+    // and to avoid accidental globs in the future when pattern
+    // matching over it, but still alias for convenience
     use RawToken as RT;
-    use Token as T;
+    use Token::*;
 
     let len = arr.len();
     if len == 0 {
@@ -19,27 +24,28 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
     let mut resp: Vec<Token> = vec![];
 
     let mut current_token = &arr[0];
-    match current_token {
-        RT::String(_) => (),
-        _ => return Err("first value must be a raw string!".to_string()),
-    };
 
     let mut i: usize = 1;
     let mut next_token;
 
     'shortcircuit_loop: {
         /// Increments the `i` variable safely.
+        ///
         /// If `i` cannot be incremented, and a message is provided,
-        /// error with that message. If no message is provided, break
-        /// away from the entire loop.
+        /// error with that message. If a lifetime is provided instead,
+        /// break that lifetime. If nothing is provided, default to the
+        /// 'shortcircuit_loop lifetime. Finally, if another expression
+        /// is provided, evaluate that one.
         macro_rules! checked_increment_assign {
-            ($($emsg:expr)?) => {{
+            () => {checked_increment_assign!('shortcircuit_loop)};
+            ($m:literal) => {checked_increment_assign!(return Err($m.to_string()));};
+            ($id:lifetime) => {checked_increment_assign!(break $id)};
+            ($action:expr) => {{
                 i += 1;
                 if i < len {
                     next_token = &arr[i]
                 } else {
-                    $(return Err($emsg.to_string());)?
-                    #[allow(unreachable_code)] {break 'shortcircuit_loop;}
+                    $action
                 };
             }};
         }
@@ -50,9 +56,11 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                 // since attributes and traits are dependent on "what comes next",
                 // they get special operations
                 RT::Equals => {
+                    // only parsing attributes here!
+                    // relational operators have been parsed already
                     checked_increment_assign!("expected token after attribute operator");
                     match (current_token, next_token) {
-                        (RT::String(a), RT::String(b)) => resp.push(T::Attribute {
+                        (RT::String(a), RT::String(b)) => resp.push(Attribute {
                             key: a.to_string(),
                             val: b.to_string(),
                         }),
@@ -63,7 +71,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                 RT::Period => {
                     checked_increment_assign!("expected token after period");
                     match (current_token, next_token) {
-                        (RT::String(a), RT::String(b)) => resp.push(T::Trait {
+                        (RT::String(a), RT::String(b)) => resp.push(Trait {
                             src: a.to_string(),
                             r#trait: b.to_string(),
                         }),
@@ -75,19 +83,22 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                     };
                     checked_increment_assign!();
                 }
-                // for colons and strings in the next pattern, they are irrelevant
-                RT::Colon | RT::String(_) | RT::Arithmetic(_) => {
-                    let token = match current_token {
-                        RT::String(s) => {
-                            if let Ok(n) = s.trim().parse::<u16>() {
-                                T::Int(n)
-                            } else {
-                                T::Raw(s.clone())
-                            }
-                        }
-                        RT::Arithmetic(op) => T::Arithmetic(op.clone()),
-                        RT::Colon => T::Colon,
-                        RT::Period | RT::Equals => panic!(),
+                // All these remaining types are matched as singletons.
+                // The pattern is not a `_`, so that the compiler generates
+                // errors when new variants are implemented on RawToken.
+                RT::Colon
+                | RT::String(_)
+                | RT::Arithmetic(_)
+                | RT::Bang
+                | RT::LeftAngle
+                | RT::RightAngle
+                | RT::Relational(_) => {
+                    // TODO: change `match` to `.unwrap` after
+                    // implementing NOT operator. RT::{Period, Equals}
+                    // cases should be matched by matches on `next_token`
+                    let token = match Token::try_from(current_token.clone()) {
+                        Ok(t) => t,
+                        Result::Err(e) => return Err(e.to_string()),
                     };
                     resp.push(token);
                 }
@@ -98,22 +109,9 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
         }
 
         // push last member
-        let token = match current_token {
-            RT::String(s) => {
-                if let Ok(n) = s.trim().parse::<u16>() {
-                    T::Int(n)
-                } else {
-                    T::Raw(s.clone())
-                }
-            }
-            RT::Colon => T::Colon,
-            RT::Equals | RT::Period => {
-                return Err(
-                    "last token must be a primitive! (String, Int, Arithmetic, or Colon)"
-                        .to_string(),
-                )
-            }
-            RT::Arithmetic(_) => todo!(),
+        let token = match Token::try_from(current_token.clone()) {
+            Ok(t) => t,
+            Result::Err(e) => return Err(e.to_string()),
         };
         resp.push(token);
     }
@@ -134,8 +132,11 @@ _SPACE, ' ',
 _COLON, ':',
 _TRAIT_SEP,'.',
 _EQUALS_SIGN, '=',
-_CLOSE_BRACKET, '[',
-_OPEN_BRACKET, ']',
+_LEFT_ANGLE, '<',
+_RIGHT_ANGLE, '>',
+_BANG, '!',
+_OPEN_BRACKET, '[',
+_CLOSE_BRACKET, ']',
 _DIV, '/',
 _MULT, '*',
 _SUB, '-',
@@ -190,18 +191,53 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
             };
         }
         macro_rules! flush_buf {
-            ($($extra:expr)*) => {
+            ($($arg:expr)*) => {{
                 if buf.len() > 0 {
+                    #[cfg(debug_assertions)] debug!("RT: push String: {:?}", buf);
                     raw_tokens.push(RawToken::String(buf));
-                    $(raw_tokens.push($extra);)*
                     #[allow(unused_assignments)] { buf = String::new() };
-                } else {
-                    $(raw_tokens.push($extra);)*
                 }
-            };
+                $(
+                    #[cfg(debug_assertions)] debug!("RT: push: {:?}", $arg);
+                    raw_tokens.push($arg);
+                )*
+
+            }};
         }
 
-        loop {
+        'outer: loop {
+            use structs::CompositeRelationalOperator as Relational;
+
+            /// Defines a token that may take up two characters.
+            macro_rules! composite_token {
+                ($default:expr, $($key:ident, $type:expr)+) => {{
+                    let token = 'token: {
+                        let next_ch = next_ch_or!(break 'token $default);
+                        match next_ch {
+                            // here arise composite tokens
+                            $($key => $type,)+
+                            // parse backslashes as escape chars
+                            _BACKSLASH => {
+                                flush_buf!($default);
+                                if next_ch == _BACKSLASH {
+                                    write_buf!("\\");
+                                    ch = next_ch_or!(break 'outer);
+                                } else {
+                                    ch = next_ch;
+                                }
+                                continue 'outer;
+                            }
+                            // parse other kinds of characters as if they were normal
+                            _ => {
+                                flush_buf!($default);
+                                ch = next_ch;
+                                continue 'outer;
+                            }
+                        }
+                    };
+                    flush_buf!(token);
+                }};
+            }
             match ch {
                 // Escape next character
                 _BACKSLASH => {
@@ -217,7 +253,6 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 // `me().attr` expressions
                 _TRAIT_SEP => flush_buf!(RawToken::Period),
                 // `key="value"` expressions
-                _EQUALS_SIGN => flush_buf!(RawToken::Equals),
                 _CLOSE_BRACKET => flush_buf!(RawToken::Arithmetic(AT::CloseBracket)),
                 _OPEN_BRACKET => flush_buf!(RawToken::Arithmetic(AT::OpenBracket)),
                 _DIV => flush_buf!(RawToken::Arithmetic(AT::Div)),
@@ -225,6 +260,26 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _SUB => flush_buf!(RawToken::Arithmetic(AT::Sub)),
                 _ADD => flush_buf!(RawToken::Arithmetic(AT::Add)),
                 _MOD => flush_buf!(RawToken::Arithmetic(AT::Mod)),
+                _EQUALS_SIGN => composite_token!(
+                    RawToken::Equals,
+                    _EQUALS_SIGN,
+                    RawToken::Relational(Relational::EqualTo)
+                ),
+                _LEFT_ANGLE => composite_token!(
+                    RawToken::LeftAngle,
+                    _EQUALS_SIGN,
+                    RawToken::Relational(Relational::LessThanEqual)
+                ),
+                _RIGHT_ANGLE => composite_token!(
+                    RawToken::RightAngle,
+                    _EQUALS_SIGN,
+                    RawToken::Relational(Relational::GreaterThanEqual)
+                ),
+                _BANG => composite_token!(
+                    RawToken::Bang,
+                    _EQUALS_SIGN,
+                    RawToken::Relational(Relational::NotEqual)
+                ),
                 // Pause delimiting inside quote blocks
                 _SINGLE_QUOTE | _DOUBLE_QUOTE => {
                     let quote = ch;

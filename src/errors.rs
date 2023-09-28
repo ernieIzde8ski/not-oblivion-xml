@@ -1,3 +1,5 @@
+use core::fmt;
+
 pub enum Maybe<T> {
     Ok(T),
     Err(String),
@@ -42,5 +44,19 @@ impl<T> Maybe<T> {
                 }
             }
         }
+    }
+}
+
+/// The error result of a failed conversion from RawToken into Token.
+#[derive(Debug)]
+pub(crate) struct ConversionError(pub(crate) crate::parsing::RawToken);
+
+impl fmt::Display for ConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ConversionError: cannot parse this type of raw token into a token: {:?}",
+            self.0
+        )
     }
 }

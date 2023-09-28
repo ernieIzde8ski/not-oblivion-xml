@@ -4,9 +4,9 @@ use std::fmt;
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum ArithmeticToken {
     /// A left square bracket.
-    CloseBracket,
-    /// A right square bracket.
     OpenBracket,
+    /// A right square bracket.
+    CloseBracket,
     /// A forward slash.
     Div,
     /// An asterisk.
@@ -19,34 +19,65 @@ pub(crate) enum ArithmeticToken {
     Mod,
 }
 
-impl fmt::Display for ArithmeticToken {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ArithmeticToken::CloseBracket => "[",
-                ArithmeticToken::OpenBracket => "]",
-                ArithmeticToken::Div => "/",
-                ArithmeticToken::Mult => "*",
-                ArithmeticToken::Sub => "-",
-                ArithmeticToken::Add => "+",
-                ArithmeticToken::Mod => "%",
-            }
-        )
+/// A subset of the RelationalOperator enum. For usage with RawToken,
+/// at which point an angle bracket is not guaranteed to be one type
+/// of operator or another.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CompositeRelationalOperator {
+    EqualTo,
+    GreaterThanEqual,
+    LessThanEqual,
+    NotEqual,
+}
+
+impl Into<RelationalOperator> for &CompositeRelationalOperator {
+    fn into(self) -> RelationalOperator {
+        match self {
+            CompositeRelationalOperator::EqualTo => RelationalOperator::EqualTo,
+            CompositeRelationalOperator::GreaterThanEqual => RelationalOperator::GreaterThanEqual,
+            CompositeRelationalOperator::LessThanEqual => RelationalOperator::LessThanEqual,
+            CompositeRelationalOperator::NotEqual => RelationalOperator::NotEqual,
+        }
+    }
+}
+
+/// Each relational operator has an XML tag corresponding to its
+/// abbreviation, and takes an operator as its argument
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum RelationalOperator {
+    EqualTo,
+    GreaterThan,
+    GreaterThanEqual,
+    LessThan,
+    LessThanEqual,
+    NotEqual,
+}
+
+impl RelationalOperator {
+    fn abbr(&self) -> &'static str {
+        match self {
+            RelationalOperator::EqualTo => "et",
+            RelationalOperator::GreaterThan => "gt",
+            RelationalOperator::GreaterThanEqual => "gte",
+            RelationalOperator::LessThan => "lt",
+            RelationalOperator::LessThanEqual => "lte",
+            RelationalOperator::NotEqual => "ne",
+        }
     }
 }
 
 /// A single unit from a line.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum RawToken {
-    /// An equals sign.
+    // Literals
     Equals,
-    /// A period.
+    LeftAngle,
+    RightAngle,
+    Bang,
     Period,
-    /// An uppercase semicolon.
     Colon,
-
+    /// Relational operators with two characters in length
+    Relational(CompositeRelationalOperator),
     /// Basic binary (mostly) operators.
     Arithmetic(ArithmeticToken),
 
@@ -62,31 +93,44 @@ pub(crate) enum RawToken {
 /// - no:  nesting tokens inside of parentheses
 #[derive(Debug, PartialEq)]
 pub(crate) enum Token {
-    /// represents a `key="value"` phrase
+    /// A `key="value"` phrase
     Attribute { key: String, val: String },
-    /// represents a `src.trait` phrase
+    /// A `src.trait` phrase
     Trait { src: String, r#trait: String },
-    /// represents a basic number
+    /// A basic number
     Int(u16),
-    /// represents an uppercase semicolon
+    /// An uppercase semicolon
     Colon,
-    /// represents one of the binary arithmetic operators
+    /// A binary arithmetic operator
     Arithmetic(ArithmeticToken),
+    /// A binary relational operator
+    Relational(RelationalOperator),
     /// Data that couldn't be parsed as any other type
     Raw(String),
 }
-
-/// Displays a token in the same format as it is read
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            Token::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
-            Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
-            Token::Int(i) => write!(f, "{}", i),
-            Token::Colon => write!(f, ":"),
-            Token::Arithmetic(op) => write!(f, "{}", op),
-            Token::Raw(s) => write!(f, "{}", s),
-        }
+impl TryFrom<RawToken> for Token {
+    type Error = crate::errors::ConversionError;
+    /// Attempts to convert a RawToken to a Token.
+    /// Does not work for certain types or if
+    fn try_from(value: RawToken) -> Result<Self, Self::Error> {
+        use crate::errors::ConversionError as Error;
+        use RelationalOperator::*;
+        use Token::*;
+        let resp: Self = match value {
+            RawToken::Equals => return Err(Error(value)),
+            RawToken::LeftAngle => Relational(LessThan),
+            RawToken::RightAngle => Relational(GreaterThan),
+            RawToken::Bang => return Err(Error(value)),
+            RawToken::Period => return Err(Error(value)),
+            RawToken::Colon => Colon,
+            RawToken::Arithmetic(op) => Arithmetic(op),
+            RawToken::Relational(r) => Relational((&r).into()),
+            RawToken::String(s) => match s.trim().parse::<u16>() {
+                Ok(n) => Int(n),
+                Err(_) => Raw(s),
+            },
+        };
+        Ok(resp)
     }
 }
 
@@ -98,7 +142,60 @@ pub struct Line {
     pub(crate) tokens: Vec<Token>,
 }
 
-/// Displays a list of tokens in a similar format as how it is read
+/*
+    The following std::fmt::Display implementations attempt to display
+    internal token structs in the .nox format.
+*/
+
+impl fmt::Display for ArithmeticToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ArithmeticToken::OpenBracket => "[",
+                ArithmeticToken::CloseBracket => "]",
+                ArithmeticToken::Div => "/",
+                ArithmeticToken::Mult => "*",
+                ArithmeticToken::Sub => "-",
+                ArithmeticToken::Add => "+",
+                ArithmeticToken::Mod => "%",
+            }
+        )
+    }
+}
+
+impl fmt::Display for RelationalOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RelationalOperator::EqualTo => "==",
+                RelationalOperator::GreaterThan => ">",
+                RelationalOperator::GreaterThanEqual => ">=",
+                RelationalOperator::LessThan => "<",
+                RelationalOperator::LessThanEqual => "<=",
+                RelationalOperator::NotEqual => "!=",
+            }
+        )
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Token::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
+            Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
+            Token::Int(i) => write!(f, "{}", i),
+            Token::Colon => write!(f, ":"),
+            Token::Arithmetic(op) => write!(f, "{}", op),
+            Token::Raw(s) => write!(f, "{}", s),
+            Token::Relational(r) => write!(f, "{}", r),
+        }
+    }
+}
+
 impl fmt::Display for Line {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for _ in 0..(self.leading_whitespace) {
