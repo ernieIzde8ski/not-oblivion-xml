@@ -5,7 +5,7 @@ pub mod parsing;
 pub(crate) mod debug;
 
 pub use errors::{ErrorEnum, LineConversionError, TokenUnitConversionError};
-pub use parsing::extract_tokens;
+pub use parsing::extract_line;
 
 #[cfg(test)]
 mod tests;

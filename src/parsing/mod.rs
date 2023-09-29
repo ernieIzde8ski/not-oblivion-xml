@@ -9,23 +9,22 @@ use crate::debug;
 #[cfg(debug_assertions)]
 #[allow(unused_imports)]
 pub(crate) use structs::RelationalOperator;
-pub(crate) use structs::{ArithmeticToken, Line, RawToken, Token};
+pub(crate) use structs::{ArithmeticToken, Expr, Line, Token};
 
 /// Converts a vector of RawToken to a vector of Token.
-fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
+fn to_expr_vec(arr: Vec<Token>) -> Result<Vec<Expr>, LineConversionError> {
     // No star-import over RawToken to avoid clashes with Token::*
     // and to avoid accidental globs in the future when pattern
     // matching over it, but still alias for convenience
+    use Expr::*;
     use LineConversionError::*;
-    use RawToken as RT;
-    use Token::*;
 
     let len = arr.len();
     if len == 0 {
         return Err(LineConversionError::NoTokensPresent);
     };
 
-    let mut resp: Vec<Token> = vec![];
+    let mut resp: Vec<Expr> = vec![];
 
     let mut current_token = &arr[0];
 
@@ -59,12 +58,12 @@ fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
             match next_token {
                 // since attributes and traits are dependent on "what comes next",
                 // they get special operations
-                RT::Equals => {
+                Token::Equals => {
                     // only parsing attributes here!
                     // relational operators have been parsed already
                     checked_increment_assign!("token after attribute operator");
                     match (current_token, next_token) {
-                        (RT::String(a), RT::String(b)) => resp.push(Attribute {
+                        (Token::String(a), Token::String(b)) => resp.push(Attribute {
                             key: a.to_string(),
                             val: b.to_string(),
                         }),
@@ -76,10 +75,10 @@ fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
                     };
                     checked_increment_assign!();
                 }
-                RT::Period => {
+                Token::Period => {
                     checked_increment_assign!("token after period");
                     match (current_token, next_token) {
-                        (RT::String(a), RT::String(b)) => resp.push(Trait {
+                        (Token::String(a), Token::String(b)) => resp.push(Trait {
                             src: a.to_string(),
                             r#trait: b.to_string(),
                         }),
@@ -94,17 +93,17 @@ fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
                 // All these remaining types are matched as singletons.
                 // The pattern is not a `_`, so that the compiler generates
                 // errors when new variants are implemented on RawToken.
-                RT::Colon
-                | RT::String(_)
-                | RT::Arithmetic(_)
-                | RT::Bang
-                | RT::LeftAngle
-                | RT::RightAngle
-                | RT::Relational(_) => {
+                Token::Colon
+                | Token::String(_)
+                | Token::Arithmetic(_)
+                | Token::Bang
+                | Token::LeftAngle
+                | Token::RightAngle
+                | Token::Relational(_) => {
                     // TODO: change `match` to `.unwrap` after
-                    // implementing NOT operator. RT::{Period, Equals}
+                    // implementing NOT operator. Token::{Period, Equals}
                     // cases should be matched by matches on `next_token`
-                    let token = match Token::try_from(current_token.clone()) {
+                    let token = match Expr::try_from(current_token.clone()) {
                         Ok(t) => t,
                         Err(e) => return Err(BadTokenUnit(e)),
                     };
@@ -117,7 +116,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
         }
 
         // push last member
-        let token = match Token::try_from(current_token.clone()) {
+        let token = match Expr::try_from(current_token.clone()) {
             Ok(t) => t,
             Result::Err(e) => return Err(BadTokenUnit(e)),
         };
@@ -134,27 +133,27 @@ macro_rules! __define_char_constants {
 }
 
 __define_char_constants! {
-_POUND, '#',
+_COMMENT, '#',
 _BACKSLASH, '\\',
 _SPACE, ' ',
 _COLON, ':',
-_TRAIT_SEP,'.',
+_PERIOD,'.',
 _EQUALS_SIGN, '=',
 _LEFT_ANGLE, '<',
 _RIGHT_ANGLE, '>',
+_LEFT_SQUARE, '[',
+_RIGHT_SQUARE, ']',
 _BANG, '!',
-_OPEN_BRACKET, '[',
-_CLOSE_BRACKET, ']',
-_DIV, '/',
-_MULT, '*',
-_SUB, '-',
-_ADD, '+',
-_MOD, '%',
+_FORWARD_SLASH, '/',
+_ASTERISK, '*',
+_MINUS, '-',
+_PLUS, '+',
+_PERCENTAGE, '%',
 _SINGLE_QUOTE, '\'',
 _DOUBLE_QUOTE, '"'
 }
 
-pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
+pub fn extract_line(line: &str) -> Result<Line, LineConversionError> {
     use ArithmeticToken as AT;
     use LineConversionError::*;
 
@@ -195,7 +194,7 @@ pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
     // do work now that the first non-whitespace character is known
     let tokens = {
         use std::fmt::Write;
-        let mut raw_tokens: Vec<RawToken> = vec![];
+        let mut raw_tokens: Vec<Token> = vec![];
         let mut buf: String = String::new();
 
         macro_rules! write_buf {
@@ -208,7 +207,7 @@ pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
             ($($arg:expr)*) => {{
                 if buf.len() > 0 {
                     #[cfg(debug_assertions)] debug!("RT: push String: {:?}", buf);
-                    raw_tokens.push(RawToken::String(buf));
+                    raw_tokens.push(Token::String(buf));
                     #[allow(unused_assignments)] { buf = String::new() };
                 }
                 $(
@@ -259,40 +258,40 @@ pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
                     write_buf!("{}", ch);
                 }
                 // Treat as comment
-                _POUND => break,
+                _COMMENT => break,
                 // Act as delimiter
                 _SPACE => flush_buf!(),
                 // Mark the end of a tag, and allow in-lining afterwards
-                _COLON => flush_buf!(RawToken::Colon),
+                _COLON => flush_buf!(Token::Colon),
                 // `me().attr` expressions
-                _TRAIT_SEP => flush_buf!(RawToken::Period),
+                _PERIOD => flush_buf!(Token::Period),
                 // `key="value"` expressions
-                _CLOSE_BRACKET => flush_buf!(RawToken::Arithmetic(AT::CloseBracket)),
-                _OPEN_BRACKET => flush_buf!(RawToken::Arithmetic(AT::OpenBracket)),
-                _DIV => flush_buf!(RawToken::Arithmetic(AT::Div)),
-                _MULT => flush_buf!(RawToken::Arithmetic(AT::Mult)),
-                _SUB => flush_buf!(RawToken::Arithmetic(AT::Sub)),
-                _ADD => flush_buf!(RawToken::Arithmetic(AT::Add)),
-                _MOD => flush_buf!(RawToken::Arithmetic(AT::Mod)),
+                _RIGHT_SQUARE => flush_buf!(Token::Arithmetic(AT::CloseBracket)),
+                _LEFT_SQUARE => flush_buf!(Token::Arithmetic(AT::OpenBracket)),
+                _FORWARD_SLASH => flush_buf!(Token::Arithmetic(AT::Div)),
+                _ASTERISK => flush_buf!(Token::Arithmetic(AT::Mult)),
+                _MINUS => flush_buf!(Token::Arithmetic(AT::Sub)),
+                _PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
+                _PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
                 _EQUALS_SIGN => composite_token!(
-                    RawToken::Equals,
+                    Token::Equals,
                     _EQUALS_SIGN,
-                    RawToken::Relational(Relational::EqualTo)
+                    Token::Relational(Relational::EqualTo)
                 ),
                 _LEFT_ANGLE => composite_token!(
-                    RawToken::LeftAngle,
+                    Token::LeftAngle,
                     _EQUALS_SIGN,
-                    RawToken::Relational(Relational::LessThanEqual)
+                    Token::Relational(Relational::LessThanEqual)
                 ),
                 _RIGHT_ANGLE => composite_token!(
-                    RawToken::RightAngle,
+                    Token::RightAngle,
                     _EQUALS_SIGN,
-                    RawToken::Relational(Relational::GreaterThanEqual)
+                    Token::Relational(Relational::GreaterThanEqual)
                 ),
                 _BANG => composite_token!(
-                    RawToken::Bang,
+                    Token::Bang,
                     _EQUALS_SIGN,
-                    RawToken::Relational(Relational::NotEqual)
+                    Token::Relational(Relational::NotEqual)
                 ),
                 // Pause delimiting inside quote blocks
                 _SINGLE_QUOTE | _DOUBLE_QUOTE => {
@@ -314,7 +313,7 @@ pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
             ch = next_ch_or!({ break })
         }
         flush_buf!();
-        to_token_vec(raw_tokens)
+        to_expr_vec(raw_tokens)
     };
 
     Ok(Line {

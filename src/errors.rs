@@ -1,7 +1,7 @@
 use core::fmt;
 use std::error::Error;
 
-use crate::parsing::RawToken;
+use crate::parsing::Token;
 
 /**
  The ErrorEnum trait.
@@ -36,9 +36,9 @@ impl Error for dyn ErrorEnum {}
 #[derive(Debug)]
 pub enum TokenUnitConversionError {
     /// Token not supported for this operation.
-    NotSupported(RawToken),
+    NotSupported(Token),
     /// Token not yet supported.
-    ToDo(RawToken),
+    ToDo(Token),
 }
 
 impl ErrorEnum for TokenUnitConversionError {

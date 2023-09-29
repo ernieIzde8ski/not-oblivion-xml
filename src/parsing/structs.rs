@@ -68,7 +68,7 @@ impl RelationalOperator {
 
 /// A single unit from a line.
 #[derive(Debug, Clone)]
-pub enum RawToken {
+pub enum Token {
     // Literals
     Equals,
     LeftAngle,
@@ -92,7 +92,7 @@ pub enum RawToken {
 /// - yes: parsing complex tokens which contain primitives, like Attribute
 /// - no:  nesting tokens inside of parentheses
 #[derive(Debug, PartialEq)]
-pub(crate) enum Token {
+pub(crate) enum Expr {
     /// A `key="value"` phrase
     Attribute { key: String, val: String },
     /// A `src.trait` phrase
@@ -109,24 +109,24 @@ pub(crate) enum Token {
     Raw(String),
 }
 
-impl TryFrom<RawToken> for Token {
+impl TryFrom<Token> for Expr {
     type Error = crate::errors::TokenUnitConversionError;
     /// Attempts to convert a RawToken to a Token.
     /// Does not work for certain types or if
-    fn try_from(value: RawToken) -> Result<Self, Self::Error> {
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
         use crate::errors::TokenUnitConversionError::*;
         use RelationalOperator::*;
-        use Token::*;
+        use Expr::*;
         let resp: Self = match value {
-            RawToken::Equals => return Err(NotSupported(value)),
-            RawToken::Period => return Err(NotSupported(value)),
-            RawToken::Bang => return Err(ToDo(value)),
-            RawToken::LeftAngle => Relational(LessThan),
-            RawToken::RightAngle => Relational(GreaterThan),
-            RawToken::Colon => Colon,
-            RawToken::Arithmetic(op) => Arithmetic(op),
-            RawToken::Relational(r) => Relational((&r).into()),
-            RawToken::String(s) => match s.trim().parse::<u16>() {
+            Token::Equals => return Err(NotSupported(value)),
+            Token::Period => return Err(NotSupported(value)),
+            Token::Bang => return Err(ToDo(value)),
+            Token::LeftAngle => Relational(LessThan),
+            Token::RightAngle => Relational(GreaterThan),
+            Token::Colon => Colon,
+            Token::Arithmetic(op) => Arithmetic(op),
+            Token::Relational(r) => Relational((&r).into()),
+            Token::String(s) => match s.trim().parse::<u16>() {
                 Ok(n) => Int(n),
                 Err(_) => Raw(s),
             },
@@ -140,7 +140,7 @@ pub struct Line {
     /// Total whitespace characters leading into a string
     pub(crate) leading_whitespace: u8,
     /// Recognized tokens in a string
-    pub(crate) tokens: Vec<Token>,
+    pub(crate) tokens: Vec<Expr>,
 }
 
 /*
@@ -154,13 +154,13 @@ impl fmt::Display for ArithmeticToken {
             f,
             "{}",
             match self {
-                ArithmeticToken::OpenBracket => "[",
-                ArithmeticToken::CloseBracket => "]",
-                ArithmeticToken::Div => "/",
-                ArithmeticToken::Mult => "*",
-                ArithmeticToken::Sub => "-",
-                ArithmeticToken::Add => "+",
-                ArithmeticToken::Mod => "%",
+                Self::OpenBracket => "[",
+                Self::CloseBracket => "]",
+                Self::Div => "/",
+                Self::Mult => "*",
+                Self::Sub => "-",
+                Self::Add => "+",
+                Self::Mod => "%",
             }
         )
     }
@@ -183,7 +183,7 @@ impl fmt::Display for RelationalOperator {
     }
 }
 
-impl fmt::Display for RawToken {
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Equals => write!(f, "="),
@@ -199,16 +199,16 @@ impl fmt::Display for RawToken {
     }
 }
 
-impl fmt::Display for Token {
+impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            Token::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
-            Token::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
-            Token::Int(i) => write!(f, "{}", i),
-            Token::Colon => write!(f, ":"),
-            Token::Arithmetic(op) => write!(f, "{}", op),
-            Token::Raw(s) => write!(f, "{}", s),
-            Token::Relational(r) => write!(f, "{}", r),
+            Expr::Attribute { key, val } => write!(f, "{}=\"{}\"", key, val),
+            Expr::Trait { src, r#trait } => write!(f, "{}.{}", src, r#trait),
+            Expr::Int(i) => write!(f, "{}", i),
+            Expr::Colon => write!(f, ":"),
+            Expr::Arithmetic(op) => write!(f, "{}", op),
+            Expr::Raw(s) => write!(f, "{}", s),
+            Expr::Relational(r) => write!(f, "{}", r),
         }
     }
 }

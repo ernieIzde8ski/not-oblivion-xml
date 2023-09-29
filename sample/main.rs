@@ -1,11 +1,11 @@
 use std::{error::Error, fs::read_to_string};
 
-use not_oblivion_xml::{extract_tokens, ErrorEnum, LineConversionError};
+use not_oblivion_xml::{extract_line, ErrorEnum, LineConversionError};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let string = read_to_string("assets/wiki_sample.nox")?;
     for line in string.split('\n') {
-        let line = extract_tokens(line);
+        let line = extract_line(line);
 
         match line {
             Ok(line) => match cfg!(debug_assertions) {
