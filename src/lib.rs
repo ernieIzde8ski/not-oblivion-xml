@@ -4,7 +4,7 @@ pub mod parsing;
 #[macro_use]
 pub(crate) mod debug;
 
-pub use errors::Maybe;
+pub use errors::{ErrorEnum, LineConversionError, TokenUnitConversionError};
 pub use parsing::extract_tokens;
 
 #[cfg(test)]

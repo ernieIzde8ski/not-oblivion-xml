@@ -5,7 +5,8 @@ mod parsing {
     #[test]
     fn empty_line() {
         let line = "# This line should be empty.";
-        extract_tokens(line).expect_not("should be empty")
+        let err = extract_tokens(line).expect_err("should be empty");
+        assert!(matches!(err, crate::LineConversionError::NoTokensPresent))
     }
 
     #[test]

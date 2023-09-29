@@ -1,24 +1,28 @@
 mod structs;
 
-use crate::errors::Maybe;
+use crate::errors::LineConversionError;
 use std::vec::Vec;
 
 #[cfg(debug_assertions)]
 use crate::debug;
-pub(crate) use structs::{ArithmeticToken, Line, RawToken, RelationalOperator, Token};
+// RelationalOperator is not used by this module, but it *is* used by tests.
+#[cfg(debug_assertions)]
+#[allow(unused_imports)]
+pub(crate) use structs::RelationalOperator;
+pub(crate) use structs::{ArithmeticToken, Line, RawToken, Token};
 
 /// Converts a vector of RawToken to a vector of Token.
-fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
-    use Maybe::{Err, Not};
+fn to_token_vec(arr: Vec<RawToken>) -> Result<Vec<Token>, LineConversionError> {
     // No star-import over RawToken to avoid clashes with Token::*
     // and to avoid accidental globs in the future when pattern
     // matching over it, but still alias for convenience
+    use LineConversionError::*;
     use RawToken as RT;
     use Token::*;
 
     let len = arr.len();
     if len == 0 {
-        return Not;
+        return Err(LineConversionError::NoTokensPresent);
     };
 
     let mut resp: Vec<Token> = vec![];
@@ -38,7 +42,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
         /// is provided, evaluate that one.
         macro_rules! checked_increment_assign {
             () => {checked_increment_assign!('shortcircuit_loop)};
-            ($m:literal) => {checked_increment_assign!(return Err($m.to_string()));};
+            ($m:literal) => {checked_increment_assign!(return Err(UnexpectedLastToken($m)));};
             ($id:lifetime) => {checked_increment_assign!(break $id)};
             ($action:expr) => {{
                 i += 1;
@@ -58,27 +62,31 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                 RT::Equals => {
                     // only parsing attributes here!
                     // relational operators have been parsed already
-                    checked_increment_assign!("expected token after attribute operator");
+                    checked_increment_assign!("token after attribute operator");
                     match (current_token, next_token) {
                         (RT::String(a), RT::String(b)) => resp.push(Attribute {
                             key: a.to_string(),
                             val: b.to_string(),
                         }),
-                        _ => return Err("Both values of an attribute must be strings!".to_string()),
+                        _ => {
+                            return Err(InvalidArgument(
+                                "Both values to an attribute operator must be strings!",
+                            ))
+                        }
                     };
                     checked_increment_assign!();
                 }
                 RT::Period => {
-                    checked_increment_assign!("expected token after period");
+                    checked_increment_assign!("token after period");
                     match (current_token, next_token) {
                         (RT::String(a), RT::String(b)) => resp.push(Trait {
                             src: a.to_string(),
                             r#trait: b.to_string(),
                         }),
                         _ => {
-                            return Err(
-                                "Both values to an attribute operator must be strings!".to_string()
-                            )
+                            return Err(InvalidArgument(
+                                "Both values to an attribute operator must be strings!",
+                            ))
                         }
                     };
                     checked_increment_assign!();
@@ -98,7 +106,7 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
                     // cases should be matched by matches on `next_token`
                     let token = match Token::try_from(current_token.clone()) {
                         Ok(t) => t,
-                        Result::Err(e) => return Err(e.to_string()),
+                        Err(e) => return Err(BadTokenUnit(e)),
                     };
                     resp.push(token);
                 }
@@ -111,12 +119,12 @@ fn to_token_vec(arr: Vec<RawToken>) -> Maybe<Vec<Token>> {
         // push last member
         let token = match Token::try_from(current_token.clone()) {
             Ok(t) => t,
-            Result::Err(e) => return Err(e.to_string()),
+            Result::Err(e) => return Err(BadTokenUnit(e)),
         };
         resp.push(token);
     }
 
-    Maybe::Ok(resp)
+    Ok(resp)
 }
 
 macro_rules! __define_char_constants {
@@ -146,36 +154,42 @@ _SINGLE_QUOTE, '\'',
 _DOUBLE_QUOTE, '"'
 }
 
-pub fn extract_tokens(line: &str) -> Maybe<Line> {
+pub fn extract_tokens(line: &str) -> Result<Line, LineConversionError> {
     use ArithmeticToken as AT;
-    use Maybe::{Err, Not, Ok};
+    use LineConversionError::*;
 
     // strip ending whitespace
     let mut line = line.trim_end().chars();
-    /// gets the next value of `ch` OR
+
+    /// gets the next value of `ch` OR executes the block statement.
+    ///
+    /// If given any expression other than a block, it is assumed to
+    /// be a LineConversionError variant, and the function exits early.
     macro_rules! next_ch_or {
-        // return Err with the message when given a string literal
-        ($m:literal) => {
-            next_ch_or!(return Err($m.to_string()))
-        };
-        ($s:expr) => {
+        ($s:block) => {
             match line.next() {
                 Some(ch) => ch,
                 None => $s,
             }
         };
+        ($err:expr) => {
+            next_ch_or!({
+                return Err($err);
+            })
+        };
     }
-    let mut ch = next_ch_or!(return Not);
+
+    let mut ch = next_ch_or!(NoTokensPresent);
 
     // loop over the first couple characters and check for whitespace total/consistency
     let whitespace_char = ch;
     let mut leading_whitespace: u8 = 0;
     while ch.is_whitespace() {
         if ch != whitespace_char {
-            return Err("Inconsistent usage of tabs & spaces".to_string());
+            return Err(InconsistentWhitespace);
         }
         leading_whitespace += 1;
-        ch = next_ch_or!(return Not);
+        ch = next_ch_or!(NoTokensPresent);
     }
 
     // do work now that the first non-whitespace character is known
@@ -212,7 +226,7 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
             macro_rules! composite_token {
                 ($default:expr, $($key:ident, $type:expr)+) => {{
                     let token = 'token: {
-                        let next_ch = next_ch_or!(break 'token $default);
+                        let next_ch = next_ch_or!({break 'token $default});
                         match next_ch {
                             // here arise composite tokens
                             $($key => $type,)+
@@ -221,7 +235,7 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                                 flush_buf!($default);
                                 if next_ch == _BACKSLASH {
                                     write_buf!("\\");
-                                    ch = next_ch_or!(break 'outer);
+                                    ch = next_ch_or!({break 'outer});
                                 } else {
                                     ch = next_ch;
                                 }
@@ -241,7 +255,7 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
             match ch {
                 // Escape next character
                 _BACKSLASH => {
-                    ch = next_ch_or!("expected a character; got EOL");
+                    ch = next_ch_or!(UnexpectedEol("char after backslash"));
                     write_buf!("{}", ch);
                 }
                 // Treat as comment
@@ -284,11 +298,11 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 _SINGLE_QUOTE | _DOUBLE_QUOTE => {
                     let quote = ch;
                     loop {
-                        ch = next_ch_or!("expected closing quote; got EOL");
+                        ch = next_ch_or!(UnexpectedEol("closing quote"));
                         if ch == quote {
                             break;
                         } else if ch == _BACKSLASH {
-                            ch = next_ch_or!("expected closing quote before EOL; got backslash");
+                            ch = next_ch_or!(UnexpectedEol("char after backslash"));
                         };
                         write_buf!("{}", ch);
                     }
@@ -297,20 +311,14 @@ pub fn extract_tokens(line: &str) -> Maybe<Line> {
                 other => write_buf!("{}", other),
             };
 
-            ch = next_ch_or!(break)
+            ch = next_ch_or!({ break })
         }
         flush_buf!();
         to_token_vec(raw_tokens)
     };
 
-    let tokens = match tokens {
-        Ok(t) => t,
-        Err(m) => return Err(m),
-        Not => return Not,
-    };
-
     Ok(Line {
         leading_whitespace,
-        tokens,
+        tokens: tokens?,
     })
 }

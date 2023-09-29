@@ -2,7 +2,7 @@ use std::fmt;
 
 /// Basic math operators
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum ArithmeticToken {
+pub enum ArithmeticToken {
     /// A left square bracket.
     OpenBracket,
     /// A right square bracket.
@@ -23,7 +23,7 @@ pub(crate) enum ArithmeticToken {
 /// at which point an angle bracket is not guaranteed to be one type
 /// of operator or another.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CompositeRelationalOperator {
+pub enum CompositeRelationalOperator {
     EqualTo,
     GreaterThanEqual,
     LessThanEqual,
@@ -68,7 +68,7 @@ impl RelationalOperator {
 
 /// A single unit from a line.
 #[derive(Debug, Clone)]
-pub(crate) enum RawToken {
+pub enum RawToken {
     // Literals
     Equals,
     LeftAngle,
@@ -108,20 +108,21 @@ pub(crate) enum Token {
     /// Data that couldn't be parsed as any other type
     Raw(String),
 }
+
 impl TryFrom<RawToken> for Token {
-    type Error = crate::errors::ConversionError;
+    type Error = crate::errors::TokenUnitConversionError;
     /// Attempts to convert a RawToken to a Token.
     /// Does not work for certain types or if
     fn try_from(value: RawToken) -> Result<Self, Self::Error> {
-        use crate::errors::ConversionError as Error;
+        use crate::errors::TokenUnitConversionError::*;
         use RelationalOperator::*;
         use Token::*;
         let resp: Self = match value {
-            RawToken::Equals => return Err(Error(value)),
+            RawToken::Equals => return Err(NotSupported(value)),
+            RawToken::Period => return Err(NotSupported(value)),
+            RawToken::Bang => return Err(ToDo(value)),
             RawToken::LeftAngle => Relational(LessThan),
             RawToken::RightAngle => Relational(GreaterThan),
-            RawToken::Bang => return Err(Error(value)),
-            RawToken::Period => return Err(Error(value)),
             RawToken::Colon => Colon,
             RawToken::Arithmetic(op) => Arithmetic(op),
             RawToken::Relational(r) => Relational((&r).into()),
@@ -179,6 +180,22 @@ impl fmt::Display for RelationalOperator {
                 RelationalOperator::NotEqual => "!=",
             }
         )
+    }
+}
+
+impl fmt::Display for RawToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Equals => write!(f, "="),
+            Self::LeftAngle => write!(f, "<"),
+            Self::RightAngle => write!(f, ">"),
+            Self::Bang => write!(f, "!"),
+            Self::Period => write!(f, "."),
+            Self::Colon => write!(f, ":"),
+            Self::Relational(r) => write!(f, "{}", &RelationalOperator::from(r.into())),
+            Self::Arithmetic(a) => write!(f, "{}", a),
+            Self::String(s) => write!(f, "{}", s),
+        }
     }
 }
 

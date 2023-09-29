@@ -1,22 +1,27 @@
 use std::{error::Error, fs::read_to_string};
 
-use not_oblivion_xml::{extract_tokens, Maybe};
+use not_oblivion_xml::{extract_tokens, ErrorEnum, LineConversionError};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let string = read_to_string("assets/wiki_sample.nox")?;
     for line in string.split('\n') {
-        match extract_tokens(line) {
-            Maybe::Ok(line) => match cfg!(debug_assertions) {
+        let line = extract_tokens(line);
+
+        match line {
+            Ok(line) => match cfg!(debug_assertions) {
                 true => println!("{:?}", line),
                 false => println!("{}", line),
             },
-            Maybe::Err(msg) => match cfg!(debug_assertions) {
-                true => println!("ERROR: {:?}", msg),
-                false => println!("ERROR: {}", msg),
-            },
-            _ => (),
-        };
+            Err(e) => {
+                if let LineConversionError::NoTokensPresent = e {
+                    continue;
+                };
+                match cfg!(debug_assertions) {
+                    true => println!("ERROR: {:?}", e),
+                    false => println!("ERROR: {}", Box::new(e) as Box<dyn ErrorEnum>),
+                };
+            }
+        }
     }
-
     Ok(())
 }
