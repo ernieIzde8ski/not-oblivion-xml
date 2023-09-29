@@ -127,12 +127,6 @@ fn to_expr_vec(arr: Vec<Token>) -> Result<Vec<Expr>, LineConversionError> {
     Ok(resp)
 }
 
-macro_rules! __define_char_constants {
-    ($($name:ident, $val:expr),*) => {
-        $(const $name: char = $val;)*
-    };
-}
-
 pub fn extract_line(line: &str) -> Result<Line, LineConversionError> {
     use char_literals as CH;
     use ArithmeticToken as AT;
