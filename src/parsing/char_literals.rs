@@ -1,0 +1,18 @@
+pub(crate) const COMMENT: char = '#';
+pub(crate) const BACKSLASH: char = '\\';
+pub(crate) const SPACE: char = ' ';
+pub(crate) const COLON: char = ':';
+pub(crate) const PERIOD: char = '.';
+pub(crate) const EQUALS_SIGN: char = '=';
+pub(crate) const LEFT_ANGLE: char = '<';
+pub(crate) const RIGHT_ANGLE: char = '>';
+pub(crate) const LEFT_SQUARE: char = '[';
+pub(crate) const RIGHT_SQUARE: char = ']';
+pub(crate) const BANG: char = '!';
+pub(crate) const FORWARD_SLASH: char = '/';
+pub(crate) const ASTERISK: char = '*';
+pub(crate) const MINUS: char = '-';
+pub(crate) const PLUS: char = '+';
+pub(crate) const PERCENTAGE: char = '%';
+pub(crate) const SINGLE_QUOTE: char = '\'';
+pub(crate) const DOUBLE_QUOTE: char = '"';

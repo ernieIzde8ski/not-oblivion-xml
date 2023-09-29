@@ -1,3 +1,4 @@
+mod char_literals;
 mod structs;
 
 use crate::errors::LineConversionError;
@@ -132,28 +133,8 @@ macro_rules! __define_char_constants {
     };
 }
 
-__define_char_constants! {
-_COMMENT, '#',
-_BACKSLASH, '\\',
-_SPACE, ' ',
-_COLON, ':',
-_PERIOD,'.',
-_EQUALS_SIGN, '=',
-_LEFT_ANGLE, '<',
-_RIGHT_ANGLE, '>',
-_LEFT_SQUARE, '[',
-_RIGHT_SQUARE, ']',
-_BANG, '!',
-_FORWARD_SLASH, '/',
-_ASTERISK, '*',
-_MINUS, '-',
-_PLUS, '+',
-_PERCENTAGE, '%',
-_SINGLE_QUOTE, '\'',
-_DOUBLE_QUOTE, '"'
-}
-
 pub fn extract_line(line: &str) -> Result<Line, LineConversionError> {
+    use char_literals as CH;
     use ArithmeticToken as AT;
     use LineConversionError::*;
 
@@ -223,16 +204,16 @@ pub fn extract_line(line: &str) -> Result<Line, LineConversionError> {
 
             /// Defines a token that may take up two characters.
             macro_rules! composite_token {
-                ($default:expr, $($key:ident, $type:expr)+) => {{
+                ($default:expr, $($key:pat, $type:expr)+) => {{
                     let token = 'token: {
                         let next_ch = next_ch_or!({break 'token $default});
                         match next_ch {
                             // here arise composite tokens
                             $($key => $type,)+
                             // parse backslashes as escape chars
-                            _BACKSLASH => {
+                            CH::BACKSLASH => {
                                 flush_buf!($default);
-                                if next_ch == _BACKSLASH {
+                                if next_ch == CH::BACKSLASH {
                                     write_buf!("\\");
                                     ch = next_ch_or!({break 'outer});
                                 } else {
@@ -253,54 +234,54 @@ pub fn extract_line(line: &str) -> Result<Line, LineConversionError> {
             }
             match ch {
                 // Escape next character
-                _BACKSLASH => {
+                CH::BACKSLASH => {
                     ch = next_ch_or!(UnexpectedEol("char after backslash"));
                     write_buf!("{}", ch);
                 }
                 // Treat as comment
-                _COMMENT => break,
+                CH::COMMENT => break,
                 // Act as delimiter
-                _SPACE => flush_buf!(),
+                CH::SPACE => flush_buf!(),
                 // Mark the end of a tag, and allow in-lining afterwards
-                _COLON => flush_buf!(Token::Colon),
+                CH::COLON => flush_buf!(Token::Colon),
                 // `me().attr` expressions
-                _PERIOD => flush_buf!(Token::Period),
+                CH::PERIOD => flush_buf!(Token::Period),
                 // `key="value"` expressions
-                _RIGHT_SQUARE => flush_buf!(Token::Arithmetic(AT::CloseBracket)),
-                _LEFT_SQUARE => flush_buf!(Token::Arithmetic(AT::OpenBracket)),
-                _FORWARD_SLASH => flush_buf!(Token::Arithmetic(AT::Div)),
-                _ASTERISK => flush_buf!(Token::Arithmetic(AT::Mult)),
-                _MINUS => flush_buf!(Token::Arithmetic(AT::Sub)),
-                _PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
-                _PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
-                _EQUALS_SIGN => composite_token!(
+                CH::RIGHT_SQUARE => flush_buf!(Token::Arithmetic(AT::CloseBracket)),
+                CH::LEFT_SQUARE => flush_buf!(Token::Arithmetic(AT::OpenBracket)),
+                CH::FORWARD_SLASH => flush_buf!(Token::Arithmetic(AT::Div)),
+                CH::ASTERISK => flush_buf!(Token::Arithmetic(AT::Mult)),
+                CH::MINUS => flush_buf!(Token::Arithmetic(AT::Sub)),
+                CH::PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
+                CH::PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
+                CH::EQUALS_SIGN => composite_token!(
                     Token::Equals,
-                    _EQUALS_SIGN,
+                    CH::EQUALS_SIGN,
                     Token::Relational(Relational::EqualTo)
                 ),
-                _LEFT_ANGLE => composite_token!(
+                CH::LEFT_ANGLE => composite_token!(
                     Token::LeftAngle,
-                    _EQUALS_SIGN,
+                    CH::EQUALS_SIGN,
                     Token::Relational(Relational::LessThanEqual)
                 ),
-                _RIGHT_ANGLE => composite_token!(
+                CH::RIGHT_ANGLE => composite_token!(
                     Token::RightAngle,
-                    _EQUALS_SIGN,
+                    CH::EQUALS_SIGN,
                     Token::Relational(Relational::GreaterThanEqual)
                 ),
-                _BANG => composite_token!(
+                CH::BANG => composite_token!(
                     Token::Bang,
-                    _EQUALS_SIGN,
+                    CH::EQUALS_SIGN,
                     Token::Relational(Relational::NotEqual)
                 ),
                 // Pause delimiting inside quote blocks
-                _SINGLE_QUOTE | _DOUBLE_QUOTE => {
+                CH::SINGLE_QUOTE | CH::DOUBLE_QUOTE => {
                     let quote = ch;
                     loop {
                         ch = next_ch_or!(UnexpectedEol("closing quote"));
                         if ch == quote {
                             break;
-                        } else if ch == _BACKSLASH {
+                        } else if ch == CH::BACKSLASH {
                             ch = next_ch_or!(UnexpectedEol("char after backslash"));
                         };
                         write_buf!("{}", ch);
