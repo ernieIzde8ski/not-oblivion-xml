@@ -44,7 +44,7 @@ impl Into<RelationalOperator> for &CompositeRelationalOperator {
 /// Each relational operator has an XML tag corresponding to its
 /// abbreviation, and takes an operator as its argument
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum RelationalOperator {
+pub enum RelationalOperator {
     EqualTo,
     GreaterThan,
     GreaterThanEqual,
@@ -87,12 +87,12 @@ pub enum Token {
 
 /// A space/quote-separated member.
 ///
-/// Only very basic parsing should be done at the RawToken -> Token stage.
+/// Only very basic parsing should be done at the Token -> Expr stage.
 /// for example:
 /// - yes: parsing complex tokens which contain primitives, like Attribute
 /// - no:  nesting tokens inside of parentheses
 #[derive(Debug, PartialEq)]
-pub(crate) enum Expr {
+pub enum Expr {
     /// A `key="value"` phrase
     Attribute { key: String, val: String },
     /// A `src.trait` phrase
@@ -110,13 +110,13 @@ pub(crate) enum Expr {
 }
 
 impl TryFrom<Token> for Expr {
-    type Error = crate::errors::TokenUnitConversionError;
+    type Error = crate::errors::ExprConversionFailure;
     /// Attempts to convert a RawToken to a Token.
     /// Does not work for certain types or if
     fn try_from(value: Token) -> Result<Self, Self::Error> {
-        use crate::errors::TokenUnitConversionError::*;
-        use RelationalOperator::*;
+        use crate::errors::ExprConversionFailure::*;
         use Expr::*;
+        use RelationalOperator::*;
         let resp: Self = match value {
             Token::Equals => return Err(NotSupported(value)),
             Token::Period => return Err(NotSupported(value)),
@@ -133,14 +133,6 @@ impl TryFrom<Token> for Expr {
         };
         Ok(resp)
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Line {
-    /// Total whitespace characters leading into a string
-    pub(crate) leading_whitespace: u8,
-    /// Recognized tokens in a string
-    pub(crate) tokens: Vec<Expr>,
 }
 
 /*
@@ -210,21 +202,5 @@ impl fmt::Display for Expr {
             Expr::Raw(s) => write!(f, "{}", s),
             Expr::Relational(r) => write!(f, "{}", r),
         }
-    }
-}
-
-impl fmt::Display for Line {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for _ in 0..(self.leading_whitespace) {
-            write!(f, " ")?
-        }
-        let len = self.tokens.len();
-        if len == 0 {
-            return Ok(());
-        };
-        for i in 0..(len - 1) {
-            write!(f, "{} ", self.tokens[i])?
-        }
-        write!(f, "{}", self.tokens[len - 1])
     }
 }

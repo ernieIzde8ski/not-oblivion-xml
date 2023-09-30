@@ -1,33 +1,38 @@
 #[cfg(test)]
 mod parsing {
+    use crate::errors;
     use crate::parsing::*;
 
     #[test]
     fn empty_line() {
         let line = "# This line should be empty.";
-        let err = extract_line(line).expect_err("should be empty");
-        assert!(matches!(err, crate::LineConversionError::NoTokensPresent))
+        let err = ExprLine::try_from(line).expect_err("should be empty");
+        assert!(match err {
+            LineConversionFailure::TokenFailure(err) =>
+                matches!(err, errors::TokenConversionFailure::NoTokensPresent),
+            _ => false,
+        })
     }
 
     #[test]
     fn attributes() {
         let line = "rect name=\"container\": // this line should have an Attribute operator";
-        let line = extract_line(line).expect("should yield tokens");
+        let line = ExprLine::try_from(line).expect("should yield expressions");
         let expected = Expr::Attribute {
             key: "name".to_owned(),
             val: "container".to_owned(),
         };
-        assert!(line.tokens.contains(&expected));
+        assert!(line.members.contains(&expected));
     }
 
     #[test]
     fn traits() {
         let line = "me().width - 0\\.0 # This should contain a trait and escaped syntax.";
-        let line = extract_line(line).expect("should yield tokens");
+        let line = ExprLine::try_from(line).expect("should yield expressions");
 
         let expected = Line {
-            leading_whitespace: 0,
-            tokens: vec![
+            total_whitespace: 0,
+            members: vec![
                 Expr::Trait {
                     src: "me()".to_string(),
                     r#trait: "width".to_string(),
@@ -43,7 +48,7 @@ mod parsing {
     #[test]
     fn syntax_error() {
         let line = "me(). // This line should have a syntax error.";
-        extract_line(line).expect_err("should fail with a syntax error");
+        ExprLine::try_from(line).expect_err("should fail with a syntax error");
     }
 
     #[test]
@@ -51,9 +56,9 @@ mod parsing {
         use ArithmeticToken::*;
         use Expr::*;
 
-        let tokens = extract_line("[ / * - + % ]")
-            .expect("should yield tokens")
-            .tokens;
+        let tokens = ExprLine::try_from("[ / * - + % ]")
+            .expect("should yield expressions")
+            .members;
         let expected = vec![
             Arithmetic(OpenBracket),
             Arithmetic(Div),
@@ -68,11 +73,11 @@ mod parsing {
 
     #[test]
     fn relational_operators() {
-        use RelationalOperator::*;
         use Expr::*;
-        let tokens = extract_line("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
-            .expect("should yield tokens")
-            .tokens;
+        use RelationalOperator::*;
+        let tokens = ExprLine::try_from("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
+            .expect("should yield expressions")
+            .members;
         let expected = vec![
             Int(1),
             Relational(EqualTo),

@@ -32,18 +32,26 @@ impl Error for dyn ErrorEnum {}
     Error Types
 */
 
-/// The error result of a failed conversion from RawToken into Token.
+/// Failed conversion from Line<Token> into Line<Expr>.
 #[derive(Debug)]
-pub enum TokenUnitConversionError {
+pub enum ExprConversionFailure {
+    /// Expected another token, but didn't get one.
+    /// String describes expected subsequent token.
+    UnexpectedLastToken(Token, String),
+    /// Expected a different kind of token.
+    /// String describes an error message.
+    InvalidToken(Token, String),
     /// Token not supported for this operation.
     NotSupported(Token),
     /// Token not yet supported.
     ToDo(Token),
 }
 
-impl ErrorEnum for TokenUnitConversionError {
+impl ErrorEnum for ExprConversionFailure {
     fn name(&self) -> String {
         match self {
+            Self::InvalidToken(..) => "InvalidToken",
+            Self::UnexpectedLastToken(..) => "UnexpectedLastToken",
             Self::NotSupported(_) => "NotSupported",
             Self::ToDo(_) => "ToDo",
         }
@@ -51,17 +59,19 @@ impl ErrorEnum for TokenUnitConversionError {
     }
 
     fn message(&self) -> Option<String> {
-        match self {
-            Self::NotSupported(token) => Some(format!("token '{}' not supported", token)),
-            Self::ToDo(token) => Some(format!("token '{}' not yet supported", token)),
-        }
+        Some(match self {
+            Self::InvalidToken(t, m) => format!("{m}; got {t}"),
+            Self::UnexpectedLastToken(t, m) => format!("expected {m} after token '{t}'",),
+            Self::NotSupported(token) => format!("token '{token}' not supported"),
+            Self::ToDo(token) => format!("token '{token}' not yet supported"),
+        })
     }
 }
 
-/// The error result of a failed conversion from &str into Line.
+/// Failed conversion from &str into Line<Token>.
 #[derive(Debug)]
-pub enum LineConversionError {
-    /// No values aside from spaces/comments in a string.
+pub enum TokenConversionFailure {
+    /// No values aside from whitespace/comments identified.
     NoTokensPresent,
     /// Inconsistent usage of tabs and spaces
     InconsistentWhitespace,
@@ -74,12 +84,9 @@ pub enum LineConversionError {
     /// Argument(s) of invalid type.
     /// Message describes expected type.
     InvalidArgument(&'static str),
-    /// Failed attempt at converting a standalone `RawToken`.
-    /// Inherited from `Token::TryFrom<RawToken>`.
-    BadTokenUnit(TokenUnitConversionError),
 }
 
-impl ErrorEnum for LineConversionError {
+impl ErrorEnum for TokenConversionFailure {
     fn name(&self) -> String {
         match self {
             Self::NoTokensPresent => "NoTokensPresent",
@@ -87,7 +94,6 @@ impl ErrorEnum for LineConversionError {
             Self::UnexpectedEol(_) => "UnexpectedEol",
             Self::UnexpectedLastToken(_) => "UnexpectedLastToken",
             Self::InvalidArgument(_) => "InvalidArgument",
-            Self::BadTokenUnit(t) => return format!("BadTokenUnit::{}", t.name()),
         }
         .to_string()
     }
@@ -100,7 +106,32 @@ impl ErrorEnum for LineConversionError {
             }
             Self::UnexpectedEol(expected) => Some(format!("expected {}, got EOL", expected)),
             Self::UnexpectedLastToken(msg) | Self::InvalidArgument(msg) => Some(msg.to_string()),
-            Self::BadTokenUnit(t) => t.message(),
+        }
+    }
+}
+
+/// Failed conversion from &str into Line<Token>.
+#[derive(Debug)]
+pub enum LineConversionFailure {
+    ExprFailure(ExprConversionFailure),
+    TokenFailure(TokenConversionFailure),
+}
+
+impl ErrorEnum for LineConversionFailure {
+    fn name(&self) -> String {
+        format!(
+            "LineConversionFailure::{}",
+            match self {
+                Self::ExprFailure(e) => e.name(),
+                Self::TokenFailure(e) => e.name(),
+            }
+        )
+    }
+
+    fn message(&self) -> Option<String> {
+        match self {
+            Self::ExprFailure(e) => e.message(),
+            Self::TokenFailure(e) => e.message(),
         }
     }
 }

@@ -4,8 +4,7 @@ pub mod parsing;
 #[macro_use]
 pub(crate) mod debug;
 
-pub use errors::{ErrorEnum, LineConversionError, TokenUnitConversionError};
-pub use parsing::extract_line;
+pub use errors::{ErrorEnum, ExprConversionFailure, TokenConversionFailure};
 
 #[cfg(test)]
 mod tests;

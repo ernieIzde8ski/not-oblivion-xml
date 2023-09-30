@@ -1,11 +1,14 @@
 use std::{error::Error, fs::read_to_string};
 
-use not_oblivion_xml::{extract_line, ErrorEnum, LineConversionError};
+use not_oblivion_xml::{
+    parsing::{ExprLine, LineConversionFailure},
+    ErrorEnum, TokenConversionFailure,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let string = read_to_string("assets/wiki_sample.nox")?;
     for line in string.split('\n') {
-        let line = extract_line(line);
+        let line = ExprLine::try_from(line);
 
         match line {
             Ok(line) => match cfg!(debug_assertions) {
@@ -13,8 +16,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 false => println!("{}", line),
             },
             Err(e) => {
-                if let LineConversionError::NoTokensPresent = e {
-                    continue;
+                if let LineConversionFailure::TokenFailure(err) = &e {
+                    if let TokenConversionFailure::NoTokensPresent = err {
+                        continue;
+                    }
                 };
                 match cfg!(debug_assertions) {
                     true => println!("ERROR: {:?}", e),
