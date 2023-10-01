@@ -1,4 +1,5 @@
 pub(crate) const COMMENT: char = '#';
+pub(crate) const DOLLAR: char = '$';
 pub(crate) const BACKSLASH: char = '\\';
 pub(crate) const SPACE: char = ' ';
 pub(crate) const COLON: char = ':';

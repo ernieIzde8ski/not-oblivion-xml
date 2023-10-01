@@ -1,99 +1,99 @@
-#[cfg(test)]
-mod parsing {
-    use crate::errors;
-    use crate::parsing::*;
+use rstest::rstest;
 
-    #[test]
-    fn empty_line() {
-        let line = "# This line should be empty.";
-        let err = ExprLine::try_from(line).expect_err("should be empty");
-        assert!(match err {
-            LineConversionFailure::TokenFailure(err) =>
-                matches!(err, errors::TokenConversionFailure::NoTokensPresent),
-            _ => false,
-        })
-    }
+use crate::errors;
+use crate::parsing::*;
 
-    #[test]
-    fn attributes() {
-        let line = "rect name=\"container\": // this line should have an Attribute operator";
-        let line = ExprLine::try_from(line).expect("should yield expressions");
-        let expected = Expr::Attribute {
-            key: "name".to_owned(),
-            val: "container".to_owned(),
-        };
-        assert!(line.members.contains(&expected));
-    }
+#[test]
+fn empty_line() {
+    let line = "# This line should be empty.";
+    let err = ExprLine::try_from(line).expect_err("should be empty");
 
-    #[test]
-    fn traits() {
-        let line = "me().width - 0\\.0 # This should contain a trait and escaped syntax.";
-        let line = ExprLine::try_from(line).expect("should yield expressions");
+    assert!(matches!(
+        err,
+        LineConversionFailure::TokenFailure(errors::TokenConversionFailure::NoTokensPresent)
+    ))
+}
 
-        let expected = Line {
-            total_whitespace: 0,
-            members: vec![
-                Expr::Trait {
-                    src: "me()".to_string(),
-                    r#trait: "width".to_string(),
-                },
-                Expr::Arithmetic(ArithmeticToken::Sub),
-                Expr::Raw("0.0".to_string()),
-            ],
-        };
+#[test]
+fn attributes() {
+    let line = "rect name=\"container\": // this line should have an Attribute operator";
+    let line = ExprLine::try_from(line).expect("should yield expressions");
+    let expected = Expr::Attribute {
+        key: "name".to_owned(),
+        val: "container".to_owned(),
+    };
+    assert!(line.members.contains(&expected));
+}
 
-        assert_eq!(line, expected);
-    }
+#[rstest]
+#[case("$me.width-0\\.0", vec![
+    Expr::Trait { src: "me".into(), arg: None, r#trait: "width".into() },
+    Expr::Arithmetic(ArithmeticOperator::Sub),
+    Expr::Raw("0.0".into()),
+])]
+#[case("$me<>.width - 0\\.0", vec![
+    Expr::Trait {src: "me".into(), arg: Some("".into()), r#trait: "width".into()},
+    Expr::Arithmetic(ArithmeticOperator::Sub),
+    Expr::Raw("0.0".into()),
+])]
+#[case("$me<0\\.0>.width", vec![
+    Expr::Trait { src: "me".into(), arg: Some("0.0".into()), r#trait: "width".into() }
+])]
+fn trait_tags(#[case] line: &str, #[case] expected: Vec<Expr>) {
+    let value = ExprLine::try_from(line)
+        .expect("should yield expressions")
+        .members;
+    assert_eq!(value, expected);
+}
 
-    #[test]
-    fn syntax_error() {
-        let line = "me(). // This line should have a syntax error.";
-        ExprLine::try_from(line).expect_err("should fail with a syntax error");
-    }
+#[test]
+fn syntax_error() {
+    let line = "me(). // This line should have a syntax error.";
+    ExprLine::try_from(line).expect_err("should fail with a syntax error");
+}
 
-    #[test]
-    fn arithmetic_operators() {
-        use ArithmeticToken::*;
-        use Expr::*;
+#[test]
+fn arithmetic_operators() {
+    use ArithmeticOperator::*;
+    use Expr::*;
 
-        let tokens = ExprLine::try_from("[ / * - + % ]")
-            .expect("should yield expressions")
-            .members;
-        let expected = vec![
-            Arithmetic(OpenBracket),
-            Arithmetic(Div),
-            Arithmetic(Mult),
-            Arithmetic(Sub),
-            Arithmetic(Add),
-            Arithmetic(Mod),
-            Arithmetic(CloseBracket),
-        ];
-        assert_eq!(tokens, expected)
-    }
+    let tokens = ExprLine::try_from("[ / * - + % ]")
+        .expect("should yield expressions")
+        .members;
+    let expected = vec![
+        Arithmetic(OpenBracket),
+        Arithmetic(Div),
+        Arithmetic(Mult),
+        Arithmetic(Sub),
+        Arithmetic(Add),
+        Arithmetic(Mod),
+        Arithmetic(CloseBracket),
+    ];
+    assert_eq!(tokens, expected)
+}
 
-    #[test]
-    fn relational_operators() {
-        use Expr::*;
-        use RelationalOperator::*;
-        let tokens = ExprLine::try_from("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
-            .expect("should yield expressions")
-            .members;
-        let expected = vec![
-            Int(1),
-            Relational(EqualTo),
-            Int(2),
-            Relational(GreaterThan),
-            Int(3),
-            Relational(GreaterThanEqual),
-            Int(4),
-            Relational(LessThan),
-            Int(5),
-            Relational(LessThanEqual),
-            Int(6),
-            Relational(NotEqual),
-            Int(7),
-        ];
+#[test]
+fn relational_operators() {
+    use Expr::*;
+    use RelationalOperator::*;
+    let tokens = ExprLine::try_from("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
+        .expect("should yield expressions")
+        .members;
+    let expected = vec![
+        Int(1),
+        Relational(EqualTo),
+        Int(2),
+        Relational(GreaterThan),
+        Int(3),
+        Relational(GreaterThanEqual),
+        Int(4),
+        Relational(LessThan),
+        Int(5),
+        Relational(LessThanEqual),
+        Int(6),
+        Relational(NotEqual),
+        Int(7),
+    ];
 
-        assert_eq!(tokens, expected);
-    }
+    assert_eq!(tokens, expected);
 }

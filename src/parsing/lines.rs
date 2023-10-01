@@ -1,6 +1,9 @@
 use core::fmt;
 
-use crate::errors::{ExprConversionFailure, LineConversionFailure, TokenConversionFailure};
+use crate::{
+    errors::{ExprConversionFailure, LineConversionFailure, TokenConversionFailure},
+    parsing::RelationalOperator,
+};
 
 use super::{Expr, Token};
 #[cfg(debug_assertions)]
@@ -24,7 +27,7 @@ impl TryFrom<&str> for TokenLine {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         use super::char_literals as CH;
-        use super::ArithmeticToken as AT;
+        use super::ArithmeticOperator as AT;
         use TokenConversionFailure::*;
 
         // strip ending whitespace
@@ -76,13 +79,16 @@ impl TryFrom<&str> for TokenLine {
             macro_rules! flush_buf {
                 ($($arg:expr)*) => {{
                     if buf.len() > 0 {
-                        #[cfg(debug_assertions)] debug!("RT: push String: {:?}", buf);
+                        #[cfg(debug_assertions)] debug!("Pushing token: String({:?})", buf);
                         raw_tokens.push(Token::String(buf));
                         #[allow(unused_assignments)] { buf = String::new() };
                     }
                     $(
-                        #[cfg(debug_assertions)] debug!("RT: push: {:?}", $arg);
-                        raw_tokens.push($arg);
+                        // avoids ownership & cloning issues by computing the value
+                        // before subsequent usage
+                        let arg = $arg;
+                        #[cfg(debug_assertions)] debug!("Pushing token: {:?}", arg);
+                        raw_tokens.push(arg);
                     )*
 
                 }};
@@ -143,6 +149,7 @@ impl TryFrom<&str> for TokenLine {
                     CH::MINUS => flush_buf!(Token::Arithmetic(AT::Sub)),
                     CH::PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
                     CH::PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
+                    CH::DOLLAR => flush_buf!(Token::Dollar),
                     CH::EQUALS_SIGN => composite_token!(
                         Token::Equals,
                         CH::EQUALS_SIGN,
@@ -206,125 +213,159 @@ impl TryFrom<TokenLine> for ExprLine {
         // matching over it
         use Expr::*;
         use ExprConversionFailure::*;
+        use RelationalOperator::*;
 
         let mut resp = Self {
             total_whitespace: value.total_whitespace,
             members: vec![],
         };
 
-        let arr = &mut resp.members;
-
-        let len = value.members.len();
-        if len == 0 {
-            return Ok(resp);
+        let mut tokens = value.members.into_iter();
+        let mut token = match tokens.next() {
+            Some(t) => t,
+            // If there are no tokens in the vec, we can just return
+            // an empty response
+            None => return Ok(resp),
         };
 
-        // Current token, next token
-        let mut token = &value.members[0];
-        let mut next;
-        let mut i: usize = 1;
+        'expr_loop: loop {
+            let resp = &mut resp.members;
 
-        'shortcircuit_loop: {
-            /// Increments the `i` and `next` variables safely.
-            ///
-            /// If `i` cannot be incremented, and a message is provided,
-            /// error with that message. If a lifetime is provided instead,
-            /// break that lifetime. If nothing is provided, default to the
-            /// 'shortcircuit_loop lifetime. Finally, if another expression
-            /// is provided, evaluate that one.
-            macro_rules! checked_increment_assign {
-                () => {checked_increment_assign!('shortcircuit_loop)};
-                ($id:lifetime) => {checked_increment_assign!({break $id})};
-
-                // ($token:expr, $m:literal) => {checked_increment_assign!(return Err(UnexpectedLastToken(token.clone(), $m.into())));};
-
-
-                ($action:block) => {{
-                    i += 1;
-                    if i < len {
-                        next = &value.members[i]
-                    } else {
-                        $action
-                    };
+            macro_rules! err {
+                ($e:expr) => {{
+                    let err = $e;
+                    #[cfg(debug_assertions)]
+                    {
+                        debug!("Returning error: {err:?}")
+                    }
+                    return Err(err);
                 }};
+            }
 
-                ($err:expr) => {
-                    checked_increment_assign!( { return Err($err); })
+            macro_rules! push {
+                () => {
+                    push!(token);
+                };
+                ($expr:expr) => {
+                    let push_res = $expr;
+                    #[cfg(debug_assertions)]
+                    {
+                        debug!("Pushing expression: {:?}", push_res);
+                    }
+                    resp.push(push_res);
                 };
             }
 
-            while i < len {
-                next = &value.members[i];
-                match next {
-                    // since attributes and traits are dependent on "what comes next",
-                    // they get special operations
-                    Token::Equals => {
-                        // only parsing attributes here!
-                        // relational operators have been parsed already
-                        checked_increment_assign!(UnexpectedLastToken(
-                            token.clone(),
-                            "token after attribute operator".into()
-                        ));
-                        match (token, next) {
-                            (Token::String(a), Token::String(b)) => arr.push(Attribute {
-                                key: a.to_string(),
-                                val: b.to_string(),
-                            }),
-                            _ => {
-                                return Err(InvalidToken(
-                                    token.clone(),
-                                    "Both values to an attribute operator must be strings!".into(),
+            let expr = match token {
+                Token::Equals | Token::Period => {
+                    err!(InvalidToken(
+                        token.to_owned(),
+                        "Incorrect token to start expression".into(),
+                    ))
+                }
+                Token::Bang => err!(ToDo(token.to_owned())),
+                Token::Colon => Colon,
+                Token::Relational(op) => Relational((&op).into()),
+                Token::Arithmetic(t) => Arithmetic(t),
+                Token::LeftAngle => Relational(LessThan),
+                Token::RightAngle => Relational(GreaterThan),
+                Token::String(s) => match tokens.next() {
+                    // handling for name='attr' expressions
+                    Some(Token::Equals) => {
+                        let val = match tokens.next() {
+                            Some(Token::String(s)) => s,
+                            Some(t) => {
+                                err!(InvalidToken(t, "expected string after equals sign".into()))
+                            }
+                            None => err!(UnexpectedLastToken(Token::String(s), "string".into())),
+                        };
+                        Attribute { key: s, val }
+                    }
+                    // with no subsequent token
+                    None => match s.parse() {
+                        Ok(n) => Int(n),
+                        Err(_) => Raw(s),
+                    },
+                    // in the case that the next token is just some irrelevant
+                    // token, we will handle the first token before trying again
+                    // with parsing the second
+                    Some(t) => {
+                        push!(match s.parse() {
+                            Ok(n) => Int(n),
+                            Err(_) => Raw(s),
+                        });
+                        token = t;
+                        continue 'expr_loop;
+                    }
+                },
+
+                Token::Dollar => {
+                    // the object or selector
+                    let src: String = match tokens.next() {
+                        Some(Token::String(s)) => s,
+                        Some(t) => err!(InvalidToken(t, "expected a string".into())),
+                        None => err!(UnexpectedLastToken(token, "string literal".into())),
+                    };
+
+                    // argument for the selector or None for the object
+                    let arg: Option<String> = match tokens.next() {
+                        Some(Token::LeftAngle) => match tokens.next() {
+                            // case: $sel<...>.trait
+                            Some(Token::String(s)) => match tokens.next() {
+                                Some(Token::RightAngle) => match tokens.next() {
+                                    Some(Token::Period) => Some(s),
+                                    Some(t) => {
+                                        err!(InvalidToken(t, "expected a period".into()))
+                                    }
+                                    None => err!(InvalidToken(token, "period".into())),
+                                },
+                                Some(t) => {
+                                    err!(InvalidToken(t, "expected a right angle bracket".into()))
+                                }
+                                None => {
+                                    err!(UnexpectedLastToken(token, "right angle bracket".into()))
+                                }
+                            },
+                            // case: $sel<>.trait
+                            Some(Token::RightAngle) => match tokens.next() {
+                                Some(Token::Period) => Some(String::new()),
+                                Some(t) => err!(InvalidToken(t, "expected a period".into())),
+                                None => err!(UnexpectedLastToken(token, "period".into())),
+                            },
+                            Some(t) => {
+                                err!(InvalidToken(
+                                    t,
+                                    "expected a string or right angle bracket".into(),
                                 ))
                             }
-                        };
-                        checked_increment_assign!();
-                    }
-                    Token::Period => {
-                        checked_increment_assign!(UnexpectedLastToken(
-                            token.clone(),
-                            "token after period".into()
-                        ));
-                        match (token, next) {
-                            (Token::String(a), Token::String(b)) => arr.push(Trait {
-                                src: a.to_string(),
-                                r#trait: b.to_string(),
-                            }),
-                            _ => {
-                                return Err(InvalidToken(
-                                    token.clone(),
-                                    "Both values to an attribute operator must be strings!".into(),
+                            None => {
+                                err!(UnexpectedLastToken(
+                                    token,
+                                    "string or right angle bracket".into(),
                                 ))
                             }
-                        };
-                        checked_increment_assign!();
-                    }
-                    // All these remaining types are matched as singletons.
-                    // The pattern is not a `_`, so that the compiler generates
-                    // errors when new variants are implemented on RawToken.
-                    Token::Colon
-                    | Token::String(_)
-                    | Token::Arithmetic(_)
-                    | Token::Bang
-                    | Token::LeftAngle
-                    | Token::RightAngle
-                    | Token::Relational(_) => {
-                        // TODO: change `match` to `.unwrap` after
-                        // implementing NOT operator. Token::{Period, Equals}
-                        // cases should be matched by matches on `next_token`
-                        arr.push(Expr::try_from(token.clone())?);
-                    }
-                };
+                        },
+                        Some(Token::Period) => None,
+                        Some(t) => err!(InvalidToken(t, "expected a period".into())),
+                        None => err!(UnexpectedLastToken(token, "period".into())),
+                    };
 
-                token = next;
-                i += 1;
-            }
+                    // name of trait for the trait-tag
+                    let r#trait: String = match tokens.next() {
+                        Some(Token::String(s)) => s,
+                        Some(t) => err!(InvalidToken(t, "expected a string".into())),
+                        None => err!(UnexpectedLastToken(token, "string".into())),
+                    };
 
-            // push last member
-            let token = match Expr::try_from(token.clone()) {
-                Ok(t) => t,
-                Result::Err(e) => return Err(e),
+                    Expr::Trait { src, arg, r#trait }
+                }
             };
-            arr.push(token);
+
+            push!(expr);
+            match tokens.next() {
+                Some(t) => token = t,
+                None => break 'expr_loop,
+            };
         }
 
         Ok(resp)

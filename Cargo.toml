@@ -7,5 +7,8 @@ edition = "2021"
 [dependencies]
 
 [[bin]]
-name = "sample"
+name = "nox-sample"
 path = "sample/main.rs"
+
+[dev-dependencies]
+rstest = { version = "0.18.2", default-features = false }
