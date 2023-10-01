@@ -1,7 +1,6 @@
 use rstest::rstest;
 
-use crate::errors;
-use crate::parsing::*;
+use crate::core::*;
 
 #[test]
 fn empty_line() {
@@ -10,7 +9,7 @@ fn empty_line() {
 
     assert!(matches!(
         err,
-        LineConversionFailure::TokenFailure(errors::TokenConversionFailure::NoTokensPresent)
+        LineConversionFailure::TokenFailure(TokenConversionFailure::NoTokensPresent)
     ))
 }
 

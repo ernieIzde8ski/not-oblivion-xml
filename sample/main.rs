@@ -1,9 +1,6 @@
 use std::{error::Error, fs::read_to_string};
 
-use not_oblivion_xml::{
-    parsing::{ExprLine, LineConversionFailure},
-    ErrorEnum, TokenConversionFailure,
-};
+use not_oblivion_xml::core::{ErrorEnum, ExprLine, LineConversionFailure, TokenConversionFailure};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let string = read_to_string("assets/wiki_sample.nox")?;
