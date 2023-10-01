@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! debug {
     () => {
-        eprintln!("Ln: {}", line!());
+        eprintln!("{:>25}:{:03}", file!(), line!());
     };
     ($($arg:tt)*) => {{
-        eprint!("Ln: {}\t|\t", line!());
+        eprint!("{:>25}:{:03}  |  ", file!(), line!());
         eprintln!($($arg)*);
     }};
 }
