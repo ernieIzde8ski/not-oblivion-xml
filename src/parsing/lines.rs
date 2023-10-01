@@ -127,6 +127,13 @@ impl TryFrom<&str> for TokenLine {
                         flush_buf!(token);
                     }};
                 }
+
+                // Delimit at whitespace
+                if ch.is_whitespace() {
+                    flush_buf!();
+                    ch = next_ch_or!({ break })
+                };
+
                 match ch {
                     // Escape next character
                     CH::BACKSLASH => {
@@ -135,13 +142,10 @@ impl TryFrom<&str> for TokenLine {
                     }
                     // Treat as comment
                     CH::COMMENT => break,
-                    // Act as delimiter
-                    CH::SPACE => flush_buf!(),
                     // Mark the end of a tag, and allow in-lining afterwards
                     CH::COLON => flush_buf!(Token::Colon),
-                    // `me().attr` expressions
+                    // `me().attr` trait-tags
                     CH::PERIOD => flush_buf!(Token::Period),
-                    // `key="value"` expressions
                     CH::RIGHT_SQUARE => flush_buf!(Token::Arithmetic(AT::CloseBracket)),
                     CH::LEFT_SQUARE => flush_buf!(Token::Arithmetic(AT::OpenBracket)),
                     CH::FORWARD_SLASH => flush_buf!(Token::Arithmetic(AT::Div)),
@@ -150,6 +154,7 @@ impl TryFrom<&str> for TokenLine {
                     CH::PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
                     CH::PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
                     CH::DOLLAR => flush_buf!(Token::Dollar),
+                    // `key="value"` attribute tags
                     CH::EQUALS_SIGN => composite_token!(
                         Token::Equals,
                         CH::EQUALS_SIGN,
