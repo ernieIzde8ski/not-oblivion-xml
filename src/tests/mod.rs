@@ -27,12 +27,12 @@ fn attributes() {
 #[rstest]
 #[case("$me.width-0\\.0", vec![
     Expr::Trait { src: "me".into(), arg: None, r#trait: "width".into() },
-    Expr::Arithmetic(ArithmeticOperator::Sub),
+    Expr::Sub,
     Expr::Raw("0.0".into()),
 ])]
 #[case("$me<>.width - 0\\.0", vec![
     Expr::Trait {src: "me".into(), arg: Some("".into()), r#trait: "width".into()},
-    Expr::Arithmetic(ArithmeticOperator::Sub),
+    Expr::Sub,
     Expr::Raw("0.0".into()),
 ])]
 #[case("$me<0\\.0>.width", vec![
@@ -53,44 +53,34 @@ fn syntax_error() {
 
 #[test]
 fn arithmetic_operators() {
-    use ArithmeticOperator::*;
     use Expr::*;
 
     let tokens = ExprLine::try_from("[ / * - + % ]")
         .expect("should yield expressions")
         .members;
-    let expected = vec![
-        Arithmetic(OpenBracket),
-        Arithmetic(Div),
-        Arithmetic(Mult),
-        Arithmetic(Sub),
-        Arithmetic(Add),
-        Arithmetic(Mod),
-        Arithmetic(CloseBracket),
-    ];
+    let expected = vec![OpenBracket, Div, Mult, Sub, Add, Mod, CloseBracket];
     assert_eq!(tokens, expected)
 }
 
 #[test]
 fn relational_operators() {
     use Expr::*;
-    use RelationalOperator::*;
     let tokens = ExprLine::try_from("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
         .expect("should yield expressions")
         .members;
     let expected = vec![
         Int(1),
-        Relational(EqualTo),
+        EqualTo,
         Int(2),
-        Relational(GreaterThan),
+        GreaterThan,
         Int(3),
-        Relational(GreaterThanEqual),
+        GreaterThanEqual,
         Int(4),
-        Relational(LessThan),
+        LessThan,
         Int(5),
-        Relational(LessThanEqual),
+        LessThanEqual,
         Int(6),
-        Relational(NotEqual),
+        NotEqual,
         Int(7),
     ];
 

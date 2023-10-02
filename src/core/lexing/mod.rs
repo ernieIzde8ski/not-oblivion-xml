@@ -1,6 +1,5 @@
 mod char_literals;
 
-use super::ArithmeticOperator as AT;
 use super::{errors::TokenConversionFailure, Line, Token};
 #[cfg(debug_assertions)]
 use crate::debug;
@@ -61,8 +60,8 @@ impl TryFrom<&str> for Line<Token> {
             macro_rules! flush_buf {
                 ($($arg:expr)*) => {{
                     if buf.len() > 0 {
-                        #[cfg(debug_assertions)] debug!("Pushing token: String({:?})", buf);
-                        raw_tokens.push(Token::String(buf));
+                        #[cfg(debug_assertions)] debug!("Pushing token: Literal({:?})", buf);
+                        raw_tokens.push(Token::Literal(buf));
                         #[allow(unused_assignments)] { buf = String::new() };
                     }
                     $(
@@ -77,8 +76,6 @@ impl TryFrom<&str> for Line<Token> {
             }
 
             'outer: loop {
-                use super::structs::CompositeRelationalOperator as Relational;
-
                 /// Defines a token that may take up two characters.
                 macro_rules! composite_token {
                     ($default:expr, $($key:pat, $type:expr)+) => {{
@@ -128,35 +125,27 @@ impl TryFrom<&str> for Line<Token> {
                     CH::COLON => flush_buf!(Token::Colon),
                     // `me().attr` trait-tags
                     CH::PERIOD => flush_buf!(Token::Period),
-                    CH::RIGHT_SQUARE => flush_buf!(Token::Arithmetic(AT::CloseBracket)),
-                    CH::LEFT_SQUARE => flush_buf!(Token::Arithmetic(AT::OpenBracket)),
-                    CH::FORWARD_SLASH => flush_buf!(Token::Arithmetic(AT::Div)),
-                    CH::ASTERISK => flush_buf!(Token::Arithmetic(AT::Mult)),
-                    CH::MINUS => flush_buf!(Token::Arithmetic(AT::Sub)),
-                    CH::PLUS => flush_buf!(Token::Arithmetic(AT::Add)),
-                    CH::PERCENTAGE => flush_buf!(Token::Arithmetic(AT::Mod)),
+                    CH::RIGHT_SQUARE => flush_buf!(Token::CloseBracket),
+                    CH::LEFT_SQUARE => flush_buf!(Token::OpenBracket),
+                    CH::FORWARD_SLASH => flush_buf!(Token::Div),
+                    CH::ASTERISK => flush_buf!(Token::Mult),
+                    CH::MINUS => flush_buf!(Token::Sub),
+                    CH::PLUS => flush_buf!(Token::Add),
+                    CH::PERCENTAGE => flush_buf!(Token::Mod),
                     CH::DOLLAR => flush_buf!(Token::Dollar),
                     // `key="value"` attribute tags
-                    CH::EQUALS_SIGN => composite_token!(
-                        Token::Equals,
-                        CH::EQUALS_SIGN,
-                        Token::Relational(Relational::EqualTo)
-                    ),
-                    CH::LEFT_ANGLE => composite_token!(
-                        Token::LeftAngle,
-                        CH::EQUALS_SIGN,
-                        Token::Relational(Relational::LessThanEqual)
-                    ),
+                    CH::EQUALS_SIGN => {
+                        composite_token!(Token::Equals, CH::EQUALS_SIGN, Token::EqualTo)
+                    }
+                    CH::LEFT_ANGLE => {
+                        composite_token!(Token::LeftAngle, CH::EQUALS_SIGN, Token::LessThanEqual)
+                    }
                     CH::RIGHT_ANGLE => composite_token!(
                         Token::RightAngle,
                         CH::EQUALS_SIGN,
-                        Token::Relational(Relational::GreaterThanEqual)
+                        Token::GreaterThanEqual
                     ),
-                    CH::BANG => composite_token!(
-                        Token::Bang,
-                        CH::EQUALS_SIGN,
-                        Token::Relational(Relational::NotEqual)
-                    ),
+                    CH::BANG => composite_token!(Token::Bang, CH::EQUALS_SIGN, Token::NotEqual),
                     // Pause delimiting inside quote blocks
                     CH::SINGLE_QUOTE | CH::DOUBLE_QUOTE => {
                         let quote = ch;

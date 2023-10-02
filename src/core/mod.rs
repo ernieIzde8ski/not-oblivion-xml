@@ -14,4 +14,4 @@ mod structs;
 pub use errors::{ErrorEnum, LineConversionFailure, TokenConversionFailure};
 pub use lines::Line;
 pub use parsing::ExprLine;
-pub(crate) use structs::{ArithmeticOperator, Expr, RelationalOperator, Token};
+pub(crate) use structs::{Expr, Token};

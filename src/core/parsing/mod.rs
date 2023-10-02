@@ -1,7 +1,7 @@
 #[cfg(debug_assertions)]
 use crate::debug;
 
-use super::{errors::ExprConversionFailure, Expr, Expr::*, Line, RelationalOperator::*, Token};
+use super::{errors::ExprConversionFailure, Expr, Expr::*, Line, Token};
 use crate::err;
 
 pub type ExprLine = Line<Expr>;
@@ -51,19 +51,31 @@ impl TryFrom<Line<Token>> for ExprLine {
                 }
                 Token::Bang => err!(ToDo(token.to_owned())),
                 Token::Colon => Colon,
-                Token::Relational(op) => Relational((&op).into()),
-                Token::Arithmetic(t) => Arithmetic(t),
-                Token::LeftAngle => Relational(LessThan),
-                Token::RightAngle => Relational(GreaterThan),
-                Token::String(s) => match tokens.next() {
+
+                Token::EqualTo => EqualTo,
+                Token::GreaterThanEqual => GreaterThanEqual,
+                Token::LessThanEqual => LessThanEqual,
+                Token::NotEqual => NotEqual,
+                Token::LeftAngle => LessThan,
+                Token::RightAngle => GreaterThan,
+
+                Token::OpenBracket => OpenBracket,
+                Token::Div => Div,
+                Token::Mult => Mult,
+                Token::Sub => Sub,
+                Token::Add => Add,
+                Token::Mod => Mod,
+                Token::CloseBracket => CloseBracket,
+
+                Token::Literal(s) => match tokens.next() {
                     // handling for name='attr' expressions
                     Some(Token::Equals) => {
                         let val = match tokens.next() {
-                            Some(Token::String(s)) => s,
+                            Some(Token::Literal(s)) => s,
                             Some(t) => {
                                 err!(InvalidToken(t, "expected string after equals sign".into()))
                             }
-                            None => err!(UnexpectedLastToken(Token::String(s), "string".into())),
+                            None => err!(UnexpectedLastToken(Token::Literal(s), "string".into())),
                         };
                         Attribute { key: s, val }
                     }
@@ -88,7 +100,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                 Token::Dollar => {
                     // the object or selector
                     let src: String = match tokens.next() {
-                        Some(Token::String(s)) => s,
+                        Some(Token::Literal(s)) => s,
                         Some(t) => err!(InvalidToken(t, "expected a string".into())),
                         None => err!(UnexpectedLastToken(token, "string literal".into())),
                     };
@@ -97,7 +109,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                     let arg: Option<String> = match tokens.next() {
                         Some(Token::LeftAngle) => match tokens.next() {
                             // case: $sel<...>.trait
-                            Some(Token::String(s)) => match tokens.next() {
+                            Some(Token::Literal(s)) => match tokens.next() {
                                 Some(Token::RightAngle) => match tokens.next() {
                                     Some(Token::Period) => Some(s),
                                     Some(t) => {
@@ -138,7 +150,7 @@ impl TryFrom<Line<Token>> for ExprLine {
 
                     // name of trait for the trait-tag
                     let r#trait: String = match tokens.next() {
-                        Some(Token::String(s)) => s,
+                        Some(Token::Literal(s)) => s,
                         Some(t) => err!(InvalidToken(t, "expected a string".into())),
                         None => err!(UnexpectedLastToken(token, "string".into())),
                     };
