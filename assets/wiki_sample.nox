@@ -1,5 +1,5 @@
 rect name='container':
-    locus: &true;
+    locus: "&true;"
     x: 0
     y: 0
     width: 500

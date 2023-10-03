@@ -60,13 +60,13 @@ impl TryFrom<&str> for Line<Token> {
             macro_rules! flush_buf {
                 ($($arg:expr)*) => {{
                     if buf.len() > 0 {
-                        #[cfg(debug_assertions)] debug!("Pushing token: Literal({:?})", buf);
-                        raw_tokens.push(Token::Literal(buf));
+                        #[cfg(debug_assertions)] debug!("Pushing token: Ident({:?})", buf);
+                        raw_tokens.push(Token::Ident(buf));
                         #[allow(unused_assignments)] { buf = String::new() };
                     }
                     $(
-                        // avoids ownership & cloning issues by computing the value
-                        // before subsequent usage
+                        // avoids ownership & cloning issues by computing the given
+                        // value(S) before subsequent usage
                         let arg = $arg;
                         #[cfg(debug_assertions)] debug!("Pushing token: {:?}", arg);
                         raw_tokens.push(arg);
@@ -148,16 +148,18 @@ impl TryFrom<&str> for Line<Token> {
                     CH::BANG => composite_token!(Token::Bang, CH::EQUALS_SIGN, Token::NotEqual),
                     // Pause delimiting inside quote blocks
                     CH::SINGLE_QUOTE | CH::DOUBLE_QUOTE => {
-                        let quote = ch;
+                        let quote_char = ch;
+                        let mut quote_buf = String::new();
                         loop {
                             ch = next_ch_or!(UnexpectedEol("closing quote"));
-                            if ch == quote {
+                            if ch == quote_char {
                                 break;
                             } else if ch == CH::BACKSLASH {
                                 ch = next_ch_or!(UnexpectedEol("char after backslash"));
                             };
-                            write_buf!("{}", ch);
+                            write!(quote_buf, "{ch}").expect("write to string buffer");
                         }
+                        flush_buf!(Token::QuotedString(quote_buf))
                     }
                     // Add unrecognized chars to buffer
                     other => write_buf!("{}", other),

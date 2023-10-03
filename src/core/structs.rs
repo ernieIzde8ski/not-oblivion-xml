@@ -27,8 +27,10 @@ pub enum Token {
     LessThanEqual,
     NotEqual,
 
+    /// A string explicitly passed as one, using single or double quotes.
+    QuotedString(String),
     /// A string that couldn't be parsed as any other symbol.
-    Literal(String),
+    Ident(String),
 }
 
 /// A space/quote-separated member.
@@ -50,8 +52,6 @@ pub enum Expr {
         arg: Option<String>,
         r#trait: String,
     },
-    /// A basic number
-    Int(u16),
     /// An uppercase semicolon
     Colon,
 
@@ -70,8 +70,12 @@ pub enum Expr {
     LessThanEqual,
     NotEqual,
 
-    /// Data that couldn't be parsed as any other type
-    Raw(String),
+    /// A basic number
+    Int(u16),
+    /// An explicitly-quoted string literal
+    QuotedString(String),
+    /// A string that couldn't be parsed as any other type
+    Ident(String),
 }
 
 /*
@@ -103,7 +107,8 @@ impl fmt::Display for Token {
             Self::LessThanEqual => write!(f, "<="),
             Self::NotEqual => write!(f, "!="),
 
-            Self::Literal(s) => write!(f, "{}", s),
+            Self::QuotedString(s) => write!(f, "\"{s}\""),
+            Self::Ident(s) => write!(f, "{s}"),
         }
     }
 }
@@ -136,7 +141,8 @@ impl fmt::Display for Expr {
             Self::LessThanEqual => write!(f, "<="),
             Self::NotEqual => write!(f, "!="),
 
-            Self::Raw(s) => write!(f, "{}", s),
+            Self::QuotedString(s) => write!(f, "\"{s}\""),
+            Self::Ident(s) => write!(f, "{}", s),
         }
     }
 }

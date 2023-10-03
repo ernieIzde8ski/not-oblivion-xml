@@ -28,12 +28,12 @@ fn attributes() {
 #[case("$me.width-0\\.0", vec![
     Expr::Trait { src: "me".into(), arg: None, r#trait: "width".into() },
     Expr::Sub,
-    Expr::Raw("0.0".into()),
+    Expr::Ident("0.0".into()),
 ])]
 #[case("$me<>.width - 0\\.0", vec![
     Expr::Trait {src: "me".into(), arg: Some("".into()), r#trait: "width".into()},
     Expr::Sub,
-    Expr::Raw("0.0".into()),
+    Expr::Ident("0.0".into()),
 ])]
 #[case("$me<0\\.0>.width", vec![
     Expr::Trait { src: "me".into(), arg: Some("0.0".into()), r#trait: "width".into() }

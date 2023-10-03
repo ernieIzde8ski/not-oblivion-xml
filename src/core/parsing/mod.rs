@@ -43,7 +43,7 @@ impl TryFrom<Line<Token>> for ExprLine {
             }
 
             let expr = match token {
-                Token::Equals | Token::Period => {
+                Token::Equals | Token::Period  => {
                     err!(InvalidToken(
                         token.to_owned(),
                         "Incorrect token to start expression".into(),
@@ -67,22 +67,23 @@ impl TryFrom<Line<Token>> for ExprLine {
                 Token::Mod => Mod,
                 Token::CloseBracket => CloseBracket,
 
-                Token::Literal(s) => match tokens.next() {
+                Token::QuotedString(s) => QuotedString(s),
+                Token::Ident(s) => match tokens.next() {
                     // handling for name='attr' expressions
                     Some(Token::Equals) => {
                         let val = match tokens.next() {
-                            Some(Token::Literal(s)) => s,
+                            Some(Token::QuotedString(s)) => s,
                             Some(t) => {
-                                err!(InvalidToken(t, "expected string after equals sign".into()))
+                                err!(InvalidToken(t, "expected quote after '='".into()))
                             }
-                            None => err!(UnexpectedLastToken(Token::Literal(s), "string".into())),
+                            None => err!(UnexpectedLastToken(Token::Ident(s), "string".into())),
                         };
                         Attribute { key: s, val }
                     }
                     // with no subsequent token
                     None => match s.parse() {
                         Ok(n) => Int(n),
-                        Err(_) => Raw(s),
+                        Err(_) => Ident(s),
                     },
                     // in the case that the next token is just some irrelevant
                     // token, we will handle the first token before trying again
@@ -90,7 +91,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                     Some(t) => {
                         push!(match s.parse() {
                             Ok(n) => Int(n),
-                            Err(_) => Raw(s),
+                            Err(_) => Ident(s),
                         });
                         token = t;
                         continue 'expr_loop;
@@ -100,7 +101,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                 Token::Dollar => {
                     // the object or selector
                     let src: String = match tokens.next() {
-                        Some(Token::Literal(s)) => s,
+                        Some(Token::Ident(s)) => s,
                         Some(t) => err!(InvalidToken(t, "expected a string".into())),
                         None => err!(UnexpectedLastToken(token, "string literal".into())),
                     };
@@ -109,7 +110,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                     let arg: Option<String> = match tokens.next() {
                         Some(Token::LeftAngle) => match tokens.next() {
                             // case: $sel<...>.trait
-                            Some(Token::Literal(s)) => match tokens.next() {
+                            Some(Token::Ident(s)) => match tokens.next() {
                                 Some(Token::RightAngle) => match tokens.next() {
                                     Some(Token::Period) => Some(s),
                                     Some(t) => {
@@ -150,7 +151,7 @@ impl TryFrom<Line<Token>> for ExprLine {
 
                     // name of trait for the trait-tag
                     let r#trait: String = match tokens.next() {
-                        Some(Token::Literal(s)) => s,
+                        Some(Token::Ident(s)) => s,
                         Some(t) => err!(InvalidToken(t, "expected a string".into())),
                         None => err!(UnexpectedLastToken(token, "string".into())),
                     };
