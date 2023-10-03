@@ -1,88 +1,38 @@
 use rstest::rstest;
 
-use crate::core::*;
-
-#[test]
-fn empty_line() {
-    let line = "# This line should be empty.";
-    let err = ExprLine::try_from(line).expect_err("should be empty");
-
-    assert!(matches!(
-        err,
-        LineConversionFailure::TokenFailure(TokenConversionFailure::NoTokensPresent)
-    ))
-}
-
-#[test]
-fn attributes() {
-    let line = "rect name=\"container\": // this line should have an Attribute operator";
-    let line = ExprLine::try_from(line).expect("should yield expressions");
-    let expected = Expr::Attribute {
-        key: "name".to_owned(),
-        val: "container".to_owned(),
-    };
-    assert!(line.members.contains(&expected));
-}
+use crate::Operator::*;
+use crate::Token::*;
+use crate::*;
 
 #[rstest]
-#[case("$me.width-0\\.0", vec![
-    Expr::Trait { src: "me".into(), arg: None, r#trait: "width".into() },
-    Expr::Sub,
-    Expr::Num(0.0),
+#[case("#This line should be empty.", vec![NewLine("".into())])]
+#[case("$me<child>.width-0.0", vec![
+    NewLine("".into()),
+    Op(Dollar),
+    Identifier("me".into()),
+    Op(LeftAngle),
+    Identifier("child".into()),
+    Op(RightAngle),
+    Op(Period),
+    Identifier("width".into()),
+    Op(Minus),
+    Number(0.0),
 ])]
-#[case("$me<>.width - 0\\.0", vec![
-    Expr::Trait {src: "me".into(), arg: Some("".into()), r#trait: "width".into()},
-    Expr::Sub,
-    Expr::Num(0.0),
+#[case("( / * - + % )", vec![
+    NewLine("".into()), Op(LeftBracket), Op(Slash), Op(Asterisk), Op(Minus), Op(Plus), Op(Mod), Op(RightBracket),
 ])]
-#[case("$me<0\\.0>.width", vec![
-    Expr::Trait { src: "me".into(), arg: Some("0.0".into()), r#trait: "width".into() }
+#[case("0 = 1 == 2 > 3 >= 4 < 5 <= 6 ! 7 != 8.0", vec![
+    NewLine("".into()),   Number(0.0),
+    Op(EqualsSign),       Number(1.0),
+    Op(EqualTo),          Number(2.0),
+    Op(RightAngle),       Number(3.0),
+    Op(GreaterThanEqual), Number(4.0),
+    Op(LeftAngle),        Number(5.0),
+    Op(LessThanEqual),    Number(6.0),
+    Op(Bang),             Number(7.0),
+    Op(NotEqual),         Number(8.0),
 ])]
-fn trait_tags(#[case] line: &str, #[case] expected: Vec<Expr>) {
-    let value = ExprLine::try_from(line)
-        .expect("should yield expressions")
-        .members;
+fn general_lexing(#[case] line: &str, #[case] expected: Vec<Token>) {
+    let value = parse_string(line).expect("should yield expressions");
     assert_eq!(value, expected);
-}
-
-#[test]
-fn syntax_error() {
-    let line = "me(). // This line should have a syntax error.";
-    ExprLine::try_from(line).expect_err("should fail with a syntax error");
-}
-
-#[test]
-fn arithmetic_operators() {
-    use Expr::*;
-
-    let tokens = ExprLine::try_from("[ / * - + % ]")
-        .expect("should yield expressions")
-        .members;
-    let expected = vec![OpenBracket, Div, Mult, Sub, Add, Mod, CloseBracket];
-    assert_eq!(tokens, expected)
-}
-
-#[test]
-fn relational_operators() {
-    use Expr::*;
-    let tokens = ExprLine::try_from("1 == 2 > 3 >= 4 < 5 <= 6 != 7")
-        .expect("should yield expressions")
-        .members;
-    let expected = vec![
-        Num(1.0),
-        EqualTo,
-        Num(2.0),
-        GreaterThan,
-        Num(3.0),
-        GreaterThanEqual,
-        Num(4.0),
-        LessThan,
-        Num(5.0),
-        LessThanEqual,
-        Num(6.0),
-        NotEqual,
-        Num(7.0),
-    ];
-
-    assert_eq!(tokens, expected);
 }

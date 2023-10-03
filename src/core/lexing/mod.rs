@@ -1,183 +1,131 @@
-mod char_literals;
+mod token;
+use std::iter::Peekable;
 
-use super::{errors::TokenConversionFailure, Line, Token};
 #[cfg(debug_assertions)]
 use crate::debug;
 use crate::err;
-use char_literals as CH;
-use TokenConversionFailure::*;
+use core::fmt::Write as _;
+pub use token::{Operator, Token, TokenError};
 
-impl TryFrom<&str> for Line<Token> {
-    type Error = TokenConversionFailure;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        // strip ending whitespace
-        let mut line = value.trim_end().chars();
-
-        /// gets the next value of `ch` OR executes the block statement.
-        ///
-        /// If given any expression other than a block, it is assumed to
-        /// be a LineConversionError variant, and the function exits early.
-        macro_rules! next_ch_or {
-            ($s:block) => {
-                match line.next() {
-                    Some(ch) => ch,
-                    None => $s,
-                }
-            };
-            ($err:expr) => {
-                next_ch_or!({
-                    err!($err);
-                })
-            };
-        }
-
-        let mut ch = next_ch_or!(NoTokensPresent);
-
-        // loop over the first couple characters and check for whitespace total/consistency
-        let whitespace_char = ch;
-        let mut leading_whitespace: u8 = 0;
-        while ch.is_whitespace() {
-            if ch != whitespace_char {
-                err!(InconsistentWhitespace);
+/// Repeatedly writes to a buffer using new characters from `chars`
+/// so long as said chars satisfy a given predicate function.
+fn predicated_char_writes(
+    mut buf: String,
+    chars: &mut Peekable<impl Iterator<Item = char>>,
+    pred: impl Fn(&char) -> bool,
+) -> Result<String, TokenError> {
+    while let Some(mut ch) = chars.next_if(&pred) {
+        if ch == '\\' {
+            match chars.next() {
+                Some(c) => ch = c,
+                None => err!(TokenError::UnterminatedStringLiteral(buf)),
             }
-            leading_whitespace += 1;
-            ch = next_ch_or!(NoTokensPresent);
-        }
-
-        // do work now that the first non-whitespace character is known
-        let tokens = {
-            use std::fmt::Write;
-            let mut raw_tokens: Vec<Token> = vec![];
-            let mut buf: String = String::new();
-
-            macro_rules! write_buf {
-                ($($arg:tt)*) => {
-                    // pretty sure this shouldn´t panic but we´ll see
-                    write!(buf, $($arg)*).expect("writing to buffer")
-                };
-            }
-            macro_rules! flush_buf {
-                ($($arg:expr)*) => {{
-                    if buf.len() > 0 {
-                        #[cfg(debug_assertions)] debug!("Pushing token: Ident({:?})", buf);
-                        raw_tokens.push(Token::Ident(buf));
-                        #[allow(unused_assignments)] { buf = String::new() };
-                    }
-                    $(
-                        // avoids ownership & cloning issues by computing the given
-                        // value(S) before subsequent usage
-                        let arg = $arg;
-                        #[cfg(debug_assertions)] debug!("Pushing token: {:?}", arg);
-                        raw_tokens.push(arg);
-                    )*
-
-                }};
-            }
-
-            'outer: loop {
-                /// Defines a token that may take up two characters.
-                macro_rules! composite_token {
-                    ($default:expr, $($key:pat, $type:expr)+) => {{
-                        let token = 'token: {
-                            let next_ch = next_ch_or!({break 'token $default});
-                            match next_ch {
-                                // here arise composite tokens
-                                $($key => $type,)+
-                                // parse backslashes as escape chars
-                                CH::BACKSLASH => {
-                                    flush_buf!($default);
-                                    if next_ch == CH::BACKSLASH {
-                                        write_buf!("\\");
-                                        ch = next_ch_or!({break 'outer});
-                                    } else {
-                                        ch = next_ch;
-                                    }
-                                    continue 'outer;
-                                }
-                                // parse other kinds of characters as if they were normal
-                                _ => {
-                                    flush_buf!($default);
-                                    ch = next_ch;
-                                    continue 'outer;
-                                }
-                            }
-                        };
-                        flush_buf!(token);
-                    }};
-                }
-
-                // Delimit at whitespace
-                if ch.is_whitespace() {
-                    flush_buf!();
-                    ch = next_ch_or!({ break })
-                };
-
-                match ch {
-                    // Escape next character
-                    CH::BACKSLASH => {
-                        ch = next_ch_or!(UnexpectedEol("char after backslash"));
-                        write_buf!("{}", ch);
-                    }
-                    // Treat as comment
-                    CH::COMMENT => break,
-                    // Mark the end of a tag, and allow in-lining afterwards
-                    CH::COLON => flush_buf!(Token::Colon),
-                    // `me().attr` trait-tags
-                    CH::PERIOD => flush_buf!(Token::Period),
-                    CH::RIGHT_SQUARE => flush_buf!(Token::CloseBracket),
-                    CH::LEFT_SQUARE => flush_buf!(Token::OpenBracket),
-                    CH::FORWARD_SLASH => flush_buf!(Token::Div),
-                    CH::ASTERISK => flush_buf!(Token::Mult),
-                    CH::MINUS => flush_buf!(Token::Sub),
-                    CH::PLUS => flush_buf!(Token::Add),
-                    CH::PERCENTAGE => flush_buf!(Token::Mod),
-                    CH::DOLLAR => flush_buf!(Token::Dollar),
-                    // `key="value"` attribute tags
-                    CH::EQUALS_SIGN => {
-                        composite_token!(Token::Equals, CH::EQUALS_SIGN, Token::EqualTo)
-                    }
-                    CH::LEFT_ANGLE => {
-                        composite_token!(Token::LeftAngle, CH::EQUALS_SIGN, Token::LessThanEqual)
-                    }
-                    CH::RIGHT_ANGLE => composite_token!(
-                        Token::RightAngle,
-                        CH::EQUALS_SIGN,
-                        Token::GreaterThanEqual
-                    ),
-                    CH::BANG => composite_token!(Token::Bang, CH::EQUALS_SIGN, Token::NotEqual),
-                    // Pause delimiting inside quote blocks
-                    CH::SINGLE_QUOTE | CH::DOUBLE_QUOTE => {
-                        let quote_char = ch;
-                        let mut quote_buf = String::new();
-                        loop {
-                            ch = next_ch_or!(UnexpectedEol("closing quote"));
-                            if ch == quote_char {
-                                break;
-                            } else if ch == CH::BACKSLASH {
-                                ch = next_ch_or!(UnexpectedEol("char after backslash"));
-                            };
-                            write!(quote_buf, "{ch}").expect("write to string buffer");
-                        }
-                        flush_buf!(Token::QuotedString(quote_buf))
-                    }
-                    // Add unrecognized chars to buffer
-                    other => write_buf!("{}", other),
-                };
-
-                ch = next_ch_or!({ break })
-            }
-            flush_buf!();
-
-            raw_tokens
         };
 
-        match tokens.len() {
-            0 => Err(NoTokensPresent),
-            _ => Ok(Line {
-                total_whitespace: leading_whitespace,
-                members: tokens,
-            }),
+        // should be OK?
+        write!(buf, "{ch}").expect("writing to string buffer");
+    }
+    Ok(buf)
+}
+
+fn parse_char(
+    ch: char,
+    chars: &mut Peekable<impl Iterator<Item = char>>,
+) -> Result<Option<Token>, TokenError> {
+    use Operator::*;
+    use Token::*;
+    let token = match ch {
+        '#' => {
+            // consume every subsequent char until hitting next line
+            while let Some(_) = chars.next_if(|c| c != &'\n') {}
+            return Ok(None);
+        }
+        '\n' => {
+            // take all subsequent whitespace non-newline chars
+            let buf =
+                predicated_char_writes(String::new(), chars, |c| c.is_whitespace() && c != &'\n')?;
+            Token::NewLine(buf)
+        }
+        '$' => Op(Dollar),
+        ':' => Op(Colon),
+        '.' => Op(Period),
+        '(' => Op(LeftBracket),
+        ')' => Op(RightBracket),
+        '/' => Op(Slash),
+        '*' => Op(Asterisk),
+        '-' => Op(Minus),
+        '+' => Op(Plus),
+        '%' => Op(Mod),
+        '!' => match chars.next_if_eq(&'=') {
+            Some(_) => Op(NotEqual),
+            None => Op(Bang),
+        },
+        '=' => match chars.next_if_eq(&'=') {
+            Some(_) => Op(EqualTo),
+            None => Op(EqualsSign),
+        },
+        '<' => match chars.next_if_eq(&'=') {
+            Some(_) => Op(LessThanEqual),
+            None => Op(LeftAngle),
+        },
+        '>' => match chars.next_if_eq(&'=') {
+            Some(_) => Op(GreaterThanEqual),
+            None => Op(RightAngle),
+        },
+        '\'' | '"' => {
+            let buf = predicated_char_writes(String::new(), chars, |c| c != &ch)?;
+            match chars.next() {
+                // asserting that the next char is in fact the correct one
+                Some(c) if c == ch => Token::StringLiteral(buf),
+                _ => err!(TokenError::UnterminatedStringLiteral(buf)),
+            }
+        }
+        c if c.is_whitespace() => return Ok(None),
+        // parsing Token::Num
+        n if n.is_numeric() => {
+            // take all subsequent numeric chars
+            let mut buf = predicated_char_writes(String::from(n), chars, |c| c.is_numeric())?;
+            if let Some(_) = chars.next_if_eq(&'.') {
+                // if we found a decimal point, take all subsequent numerics, again
+                write!(buf, ".").expect("writing to string buffer");
+                buf = predicated_char_writes(buf, chars, |c| c.is_numeric())?;
+            }
+            // this *shouldn't* panic, because the rust library is capable of parsing
+            // anything along the lines of `\d+(\.\d*)?` (regex format), which is
+            // what the buf should match at this point
+            Token::Number(buf.parse().expect("should parse to f32"))
+        }
+        // parsing identifiers as a buffer of any alphanumeric string following an alpha
+        c => Identifier(predicated_char_writes(String::from(c), chars, |c| {
+            c.is_alphanumeric()
+        })?),
+    };
+
+    Ok(Some(token))
+}
+
+pub(crate) fn parse_chars(
+    mut chars: Peekable<impl Iterator<Item = char>>,
+) -> Result<Vec<Token>, TokenError> {
+    // Since we check for indent levels after finding a newline,
+    // but also since we want to check for indent levels on the
+    // first iteration, it becomes necessary to pretend that the
+    // first given character is a newline
+    let mut ch = '\n';
+    let mut resp = Vec::new();
+
+    loop {
+        if let Some(token) = parse_char(ch, &mut chars)? {
+            #[cfg(debug_assertions)]
+            debug!("Pushing token: {token:?}");
+            resp.push(token);
+        }
+
+        match chars.next() {
+            Some(c) => ch = c,
+            None => break,
         }
     }
+
+    Ok(resp)
 }

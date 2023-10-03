@@ -4,14 +4,6 @@ structs and parsing them into expressions.
 */
 
 mod errors;
-mod lexing;
-mod lines;
-mod parsing;
-mod structs;
+pub(crate) mod lexing;
 
-// publicly expose types for conversion: error types, Line types
-// privately expose types for doing conversion work: tokens, expressions
-pub use errors::{ErrorEnum, LineConversionFailure, TokenConversionFailure};
-pub use lines::Line;
-pub use parsing::ExprLine;
-pub(crate) use structs::{Expr, Token};
+pub use lexing::{Operator, Token, TokenError};
