@@ -43,7 +43,7 @@ impl TryFrom<Line<Token>> for ExprLine {
             }
 
             let expr = match token {
-                Token::Equals | Token::Period  => {
+                Token::Equals | Token::Period => {
                     err!(InvalidToken(
                         token.to_owned(),
                         "Incorrect token to start expression".into(),
@@ -82,7 +82,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                     }
                     // with no subsequent token
                     None => match s.parse() {
-                        Ok(n) => Int(n),
+                        Ok(n) => Num(n),
                         Err(_) => Ident(s),
                     },
                     // in the case that the next token is just some irrelevant
@@ -90,7 +90,7 @@ impl TryFrom<Line<Token>> for ExprLine {
                     // with parsing the second
                     Some(t) => {
                         push!(match s.parse() {
-                            Ok(n) => Int(n),
+                            Ok(n) => Num(n),
                             Err(_) => Ident(s),
                         });
                         token = t;

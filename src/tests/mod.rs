@@ -28,12 +28,12 @@ fn attributes() {
 #[case("$me.width-0\\.0", vec![
     Expr::Trait { src: "me".into(), arg: None, r#trait: "width".into() },
     Expr::Sub,
-    Expr::Ident("0.0".into()),
+    Expr::Num(0.0),
 ])]
 #[case("$me<>.width - 0\\.0", vec![
     Expr::Trait {src: "me".into(), arg: Some("".into()), r#trait: "width".into()},
     Expr::Sub,
-    Expr::Ident("0.0".into()),
+    Expr::Num(0.0),
 ])]
 #[case("$me<0\\.0>.width", vec![
     Expr::Trait { src: "me".into(), arg: Some("0.0".into()), r#trait: "width".into() }
@@ -69,19 +69,19 @@ fn relational_operators() {
         .expect("should yield expressions")
         .members;
     let expected = vec![
-        Int(1),
+        Num(1.0),
         EqualTo,
-        Int(2),
+        Num(2.0),
         GreaterThan,
-        Int(3),
+        Num(3.0),
         GreaterThanEqual,
-        Int(4),
+        Num(4.0),
         LessThan,
-        Int(5),
+        Num(5.0),
         LessThanEqual,
-        Int(6),
+        Num(6.0),
         NotEqual,
-        Int(7),
+        Num(7.0),
     ];
 
     assert_eq!(tokens, expected);

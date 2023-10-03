@@ -71,7 +71,7 @@ pub enum Expr {
     NotEqual,
 
     /// A basic number
-    Int(u16),
+    Num(f32),
     /// An explicitly-quoted string literal
     QuotedString(String),
     /// A string that couldn't be parsed as any other type
@@ -123,7 +123,7 @@ impl fmt::Display for Expr {
                 r#trait,
             } => write!(f, "${src}<{arg}>.{trait}"),
             Self::Trait { src, r#trait, .. } => write!(f, "{}.{}", src, r#trait),
-            Self::Int(i) => write!(f, "{}", i),
+            Self::Num(i) => write!(f, "{}", i),
             Self::Colon => write!(f, ":"),
 
             Self::OpenBracket => write!(f, "("),
