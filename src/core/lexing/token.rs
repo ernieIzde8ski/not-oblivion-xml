@@ -77,12 +77,14 @@ impl Display for Token {
 #[derive(Debug)]
 pub enum TokenError {
     UnterminatedStringLiteral(String),
+    InvalidChar(char),
 }
 
 impl std::fmt::Display for TokenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnterminatedStringLiteral(s) => write!(f, "UnterminatedStringLiteral: {s}"),
+            Self::InvalidChar(s) => write!(f, "InvalidChar: {s}"),
         }
     }
 }

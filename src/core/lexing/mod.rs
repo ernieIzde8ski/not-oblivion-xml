@@ -96,9 +96,12 @@ fn parse_char(
             Token::Number(buf.parse().expect("should parse to f32"))
         }
         // parsing identifiers as a buffer of any alphanumeric string following an alpha
-        c => Identifier(predicated_char_writes(String::from(c), chars, |c| {
-            c.is_alphanumeric()
-        })?),
+        c if c == '_' || c.is_alphabetic() => {
+            Identifier(predicated_char_writes(String::from(c), chars, |c| {
+                c == &'_' || c.is_alphanumeric()
+            })?)
+        }
+        c => err!(TokenError::InvalidChar(c)),
     };
 
     Ok(Some(token))
