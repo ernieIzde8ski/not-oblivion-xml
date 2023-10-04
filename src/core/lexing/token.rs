@@ -6,6 +6,7 @@ pub enum Operator {
     Colon,
     Period,
     Bang,
+    NewLine,
 
     LeftBracket,
     RightBracket,
@@ -30,8 +31,10 @@ pub enum Operator {
 pub enum Token {
     /// Miscellaneous one or two char constants
     Op(Operator),
-    /// An ascii newline. Inner content represents indent level.
-    NewLine(String),
+    /// An increment in indentation level.
+    Indent,
+    /// A decrement in indentation level.
+    Dedent,
     StringLiteral(String),
     Number(f32),
     Identifier(String),
@@ -44,6 +47,7 @@ impl Display for Operator {
             Self::Colon => write!(f, ":"),
             Self::Period => write!(f, "."),
             Self::Bang => write!(f, "!"),
+            Self::NewLine => write!(f, "\n"),
             Self::LeftBracket => write!(f, "("),
             Self::RightBracket => write!(f, ")"),
             Self::Slash => write!(f, "/"),
@@ -66,7 +70,8 @@ impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Op(op) => write!(f, "{op}"),
-            Self::NewLine(s) => write!(f, "\n{s}"),
+            Self::Indent => write!(f, "\t"),
+            Self::Dedent => Ok(()),
             Self::Identifier(s) => write!(f, "{s}"),
             Self::StringLiteral(s) => write!(f, "\"{}\"", s.replace("\"", "\\\"")),
             Self::Number(num) => write!(f, "{num}"),
@@ -78,6 +83,8 @@ impl Display for Token {
 pub enum TokenError {
     UnterminatedStringLiteral(String),
     InvalidChar(char),
+    InconsistentLeadingWhitespaceChars,
+    InconsistentLeadingWhitespaceCount,
 }
 
 impl std::fmt::Display for TokenError {
@@ -85,6 +92,12 @@ impl std::fmt::Display for TokenError {
         match self {
             Self::UnterminatedStringLiteral(s) => write!(f, "UnterminatedStringLiteral: {s}"),
             Self::InvalidChar(s) => write!(f, "InvalidChar: {s}"),
+            Self::InconsistentLeadingWhitespaceChars => {
+                write!(f, "InconsistentLeadingWhitespaceChars")
+            }
+            Self::InconsistentLeadingWhitespaceCount => {
+                write!(f, "InconsistentLeadingWhitespaceCount")
+            }
         }
     }
 }

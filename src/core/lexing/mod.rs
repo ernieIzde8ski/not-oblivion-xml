@@ -40,12 +40,6 @@ fn parse_char(
             while let Some(_) = chars.next_if(|c| c != &'\n') {}
             return Ok(None);
         }
-        '\n' => {
-            // take all subsequent whitespace non-newline chars
-            let buf =
-                predicated_char_writes(String::new(), chars, |c| c.is_whitespace() && c != &'\n')?;
-            Token::NewLine(buf)
-        }
         '$' => Op(Dollar),
         ':' => Op(Colon),
         '.' => Op(Period),
@@ -107,6 +101,70 @@ fn parse_char(
     Ok(Some(token))
 }
 
+/// Special parsing case for `\n`. TODO: revise entirely
+fn parse_newline(
+    indent: &mut (usize, char, usize),
+    chars: &mut Peekable<impl Iterator<Item = char>>,
+    tokens: &mut Vec<Token>,
+) -> Result<(), TokenError> {
+    if tokens.len() != 0 {
+        let token = Token::Op(Operator::NewLine);
+        #[cfg(debug_assertions)]
+        debug!("Pushing token: {token:?}");
+        tokens.push(token)
+    };
+
+    let indent_chars =
+        predicated_char_writes(String::new(), chars, |c| c.is_whitespace() && c != &'\n')?;
+
+    'c: {
+        let indent_len = indent_chars.len();
+        if indent_len == 0 {
+            break 'c;
+        };
+        let indent_chars = Vec::from_iter(indent_chars.chars());
+
+        match chars.peek() {
+            Some(c) if c == &'#' || c == &'\n' => break 'c,
+            None => break 'c,
+            _ => (),
+        };
+
+        if indent.1 == '_' {
+            indent.1 = indent_chars[0].clone();
+            indent.2 = indent_len;
+        };
+
+        if indent_chars.iter().any(|c| c != &indent.1) {
+            err!(TokenError::InconsistentLeadingWhitespaceChars);
+        };
+
+        if indent_len == 0 {
+            break 'c;
+        } else if indent_len > indent.0 {
+            let token = Token::Indent;
+            #[cfg(debug_assertions)]
+            debug!("Pushing token: {token:?}");
+            tokens.push(token);
+            indent.0 = indent_len
+        } else if indent_len < indent.0 {
+            if indent_len % indent.2 != 0 {
+                err!(TokenError::InconsistentLeadingWhitespaceChars)
+            }
+
+            while indent.0 != indent_len {
+                let token = Token::Dedent;
+                #[cfg(debug_assertions)]
+                debug!("Pushing token: {token:?}");
+                tokens.push(token);
+
+                indent.0 -= indent.2;
+            }
+        };
+    }
+    Ok(())
+}
+
 pub(crate) fn parse_chars(
     mut chars: Peekable<impl Iterator<Item = char>>,
 ) -> Result<Vec<Token>, TokenError> {
@@ -117,8 +175,16 @@ pub(crate) fn parse_chars(
     let mut ch = '\n';
     let mut resp = Vec::new();
 
+    // information about current indent level
+    // indent.0: last indent level
+    // indent.1: indent char
+    // indent.2: expected diff in indent
+    let mut indent = (0, '_', 0);
+
     loop {
-        if let Some(token) = parse_char(ch, &mut chars)? {
+        if ch == '\n' {
+            parse_newline(&mut indent, &mut chars, &mut resp)?;
+        } else if let Some(token) = parse_char(ch, &mut chars)? {
             #[cfg(debug_assertions)]
             debug!("Pushing token: {token:?}");
             resp.push(token);
